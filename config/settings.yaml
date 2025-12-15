@@ -1,0 +1,37 @@
+# ScholarPipe Configuration
+
+database:
+  path: data/history.db
+
+sources:
+  - name: nature_neuro
+    type: rss
+    url: https://www.nature.com/neuro.rss
+    enabled: true
+
+  - name: cell
+    type: rss
+    url: https://www.cell.com/cell/rss
+    enabled: false
+
+screener:
+  model: deepseek
+  # api_key: set via DEEPSEEK_API_KEY env var
+  threshold: 6
+  max_concurrent: 5
+
+fetcher:
+  download_dir: downloads/
+  timeout: 30
+  retry: 3
+
+delivery:
+  console: true
+  wordpress:
+    enabled: false
+    # url: https://your-site.com
+    # username: set via WP_USERNAME env var
+    # password: set via WP_PASSWORD env var
+  zotero:
+    enabled: false
+    # api_key: set via ZOTERO_API_KEY env var

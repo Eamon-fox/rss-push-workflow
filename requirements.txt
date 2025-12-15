@@ -1,0 +1,19 @@
+# Core
+pydantic>=2.0.0
+pyyaml>=6.0
+
+# Data sources
+feedparser>=6.0.0
+httpx>=0.25.0
+
+# Browser automation (for PDF download)
+playwright>=1.40.0
+
+# PDF processing
+# marker-pdf  # Install separately due to ML dependencies
+
+# LLM APIs
+openai>=1.0.0  # For DeepSeek-compatible API
+
+# Utilities
+python-dotenv>=1.0.0
