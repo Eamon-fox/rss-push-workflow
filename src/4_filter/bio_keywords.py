@@ -1,4 +1,7 @@
-"""Bio keyword filter - requires at least one biology-related term."""
+"""Bio keyword filter - requires at least one biology-related term.
+
+Kept for backward-compatibility; the hybrid filter lives in `hybrid.py`.
+"""
 
 import json
 from datetime import datetime
@@ -10,70 +13,10 @@ if TYPE_CHECKING:
 
 FILTER_DIR = Path("data/filtered")
 
-# Word stems for morphological matching (e.g., "protein" matches "proteins")
-BIO_KEYWORDS = [
-    # High specificity - molecular biology
-    "rna", "dna", "protein", "peptide", "nucleotide",
-    "chromatin", "histone", "epigenet", "proteom",
-    "kinase", "phosphatas", "phosphoryl", "proteas", "ligase", "hydrolase", "polymeras",
+from .config import GENERAL_BIO_KEYWORDS
 
-    # High specificity - cell types
-    "neuron", "glia", "astrocyt", "microglia",
-    "neutrophil", "macrophag", "lymphocyt", "fibroblast",
-    "oocyt", "sperm",
-
-    # High specificity - organelles
-    "mitochond", "ribosom", "lysosom", "chloroplast",
-
-    # High specificity - neurotransmitters
-    "dopamin", "serotonin", "glutamat",
-
-    # High specificity - disease
-    "cancer", "tumor", "carcinom", "leukem", "lymphom",
-    "alzheim", "parkinson", "diabet",
-
-    # High specificity - immunology
-    "antibod", "antigen", "cytokin", "antibiotic", "vaccin",
-
-    # High specificity - pathogens
-    "virus", "viral", "bacteri", "pathogen", "fungal", "fungi",
-    "toxoplasm", "parasit",
-
-    # High specificity - techniques
-    "cryo", "crystallograph", "crispr", "sequenc",
-
-    # Medium specificity - genetics
-    "gene", "genom", "genetic", "mutat", "transcript",
-
-    # Medium specificity - neuroscience
-    "brain", "neural", "cortex", "hippocam", "synap", "cognitiv",
-
-    # Medium specificity - cell/tissue
-    "cell", "tissue",
-
-    # Medium specificity - immunity
-    "immun", "inflamm", "infect",
-
-    # Medium specificity - development/physiology
-    "embryo", "ovar", "reproduct", "fertiliz",
-    "mammal", "vertebrat", "hormon", "aging", "ageing", "lifespan",
-
-    # Medium specificity - microbiology
-    "microb", "microorganism", "mosquit",
-
-    # Medium specificity - plant biology
-    "chlorophyll", "photosyn", "pollinat", "plant", "xylem", "phloem",
-    "seed", "dormancy", "germination",
-
-    # Medium specificity - biochemistry
-    "biosynthes", "metabol", "receptor", "ligand", "enzym",
-
-    # Medium specificity - physiology
-    "regulat", "signal", "pathway",
-
-    # Compound terms (high specificity)
-    "stem cell", "t cell", "b cell", "cell line", "cell type", "cell death",
-]
+# Backward compatible name
+BIO_KEYWORDS = GENERAL_BIO_KEYWORDS
 
 
 def has_bio_keyword(title: str, content: str) -> tuple[bool, list[str]]:

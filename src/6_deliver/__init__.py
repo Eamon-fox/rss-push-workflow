@@ -1,4 +1,4 @@
-"""Step 5: Output delivery."""
+"""Step 6: Output delivery."""
 
 from .console import to_console, to_json, to_markdown
 

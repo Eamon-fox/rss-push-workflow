@@ -1,4 +1,4 @@
-"""Step 4: LLM processing - dedup, score, summarize."""
+"""Step 5: LLM processing - dedup, score, summarize."""
 
 from .process import process_batch
 

@@ -5,7 +5,8 @@ from pathlib import Path
 from datetime import datetime
 
 from ..models import NewsItem
-from . import filter_bio, BIO_KEYWORDS
+from . import filter_hybrid
+from .config import GENERAL_BIO_KEYWORDS
 
 DEDUP_DIR = Path("data/deduped")
 
@@ -24,14 +25,20 @@ def main():
 
     items = [NewsItem(**d) for d in data]
     print(f"Loaded {len(items)} items from {input_file}")
-    print(f"Bio keywords count: {len(BIO_KEYWORDS)}")
+    print(f"Bio keywords count: {len(GENERAL_BIO_KEYWORDS)}")
 
     # Filter
-    passed, filtered = filter_bio(items)
+    passed, filtered, stats = filter_hybrid(items, save=False)
 
     print(f"\nFilter results:")
     print(f"  Passed: {len(passed)} ({len(passed)/len(items)*100:.1f}%)")
     print(f"  Filtered: {len(filtered)} ({len(filtered)/len(items)*100:.1f}%)")
+    print(
+        f"  L1 dropped: {stats.layer1_dropped} | "
+        f"VIP kept: {stats.layer2_vip_kept} | "
+        f"semantic kept: {stats.layer2_semantic_kept} | "
+        f"semantic dropped: {stats.layer2_semantic_dropped}"
+    )
 
     # Show filtered items
     print(f"\n=== FILTERED (non-bio) ===")
