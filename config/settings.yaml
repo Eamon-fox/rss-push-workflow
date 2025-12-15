@@ -3,17 +3,6 @@
 database:
   path: data/history.db
 
-sources:
-  - name: nature_neuro
-    type: rss
-    url: https://www.nature.com/neuro.rss
-    enabled: true
-
-  - name: cell
-    type: rss
-    url: https://www.cell.com/cell/rss
-    enabled: false
-
 screener:
   model: deepseek
   # api_key: set via DEEPSEEK_API_KEY env var

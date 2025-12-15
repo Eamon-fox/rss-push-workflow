@@ -3,6 +3,8 @@
 from ..models import NewsItem
 from ..infra import chat
 
+BATCH_SIZE = 20  # Process this many items per LLM call
+
 
 def process_batch(
     items: list[NewsItem],
@@ -24,9 +26,21 @@ def process_batch(
     if not items:
         return []
 
-    prompt = _build_prompt(items, score_threshold)
-    response = chat(prompt)
-    return _parse_response(response, items)
+    all_results = []
+
+    # Process in batches
+    for i in range(0, len(items), BATCH_SIZE):
+        batch = items[i:i + BATCH_SIZE]
+        batch_num = i // BATCH_SIZE + 1
+        total_batches = (len(items) + BATCH_SIZE - 1) // BATCH_SIZE
+        print(f"      Processing batch {batch_num}/{total_batches}...")
+
+        prompt = _build_prompt(batch, score_threshold)
+        response = chat(prompt, max_tokens=4000)
+        results = _parse_response(response, batch)
+        all_results.extend(results)
+
+    return all_results
 
 
 def _build_prompt(items: list[NewsItem], score_threshold: float) -> str:
@@ -82,12 +96,17 @@ def _parse_response(response: str, original_items: list[NewsItem]) -> list[NewsI
     # Extract JSON from response
     match = re.search(r'\[.*\]', response, re.DOTALL)
     if not match:
+        print(f"      [DEBUG] No JSON found in response: {response[:200]}...")
         return []
 
     try:
         data = json.loads(match.group())
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
+        print(f"      [DEBUG] JSON parse error: {e}")
+        print(f"      [DEBUG] Response: {response[:300]}...")
         return []
+
+    print(f"      [DEBUG] Parsed {len(data)} items from LLM")
 
     results = []
     for item in data:
@@ -100,6 +119,10 @@ def _parse_response(response: str, original_items: list[NewsItem]) -> list[NewsI
                 link=item.get("link", orig.link),
                 source_name=item.get("source", orig.source_name),
                 source_url=orig.source_url,
+                authors=orig.authors,
+                doi=orig.doi,
+                fetched_at=orig.fetched_at,
+                published_at=orig.published_at,
                 score=item.get("score"),
                 summary=item.get("summary", ""),
             ))

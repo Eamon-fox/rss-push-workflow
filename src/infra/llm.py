@@ -1,19 +1,22 @@
 """LLM Client - Zhipu GLM-4-Flash."""
 
+import os
 import httpx
 
 BASE_URL = "https://open.bigmodel.cn/api/coding/paas/v4"
 MODEL = "glm-4-flash"
-API_KEY = "b10ed78a78a4477c86ad67d17be00b3b.qEcEy7Hcq8v8XEYk"
+API_KEY = os.environ.get("ZHIPU_API_KEY", "")
 
-HEADERS = {
-    "User-Agent": "Cline-VSCode-Extension",
-    "HTTP-Referer": "https://cline.bot",
-    "X-Title": "Cline",
-    "X-Cline-Version": "3.42.0",
-    "Authorization": f"Bearer {API_KEY}",
-    "Content-Type": "application/json",
-}
+
+def _get_headers():
+    return {
+        "User-Agent": "Cline-VSCode-Extension",
+        "HTTP-Referer": "https://cline.bot",
+        "X-Title": "Cline",
+        "X-Cline-Version": "3.42.0",
+        "Authorization": f"Bearer {API_KEY}",
+        "Content-Type": "application/json",
+    }
 
 
 def chat(prompt: str, max_tokens: int = 2000) -> str:
@@ -29,7 +32,7 @@ def chat(prompt: str, max_tokens: int = 2000) -> str:
     """
     response = httpx.post(
         f"{BASE_URL}/chat/completions",
-        headers=HEADERS,
+        headers=_get_headers(),
         json={
             "model": MODEL,
             "messages": [{"role": "user", "content": prompt}],

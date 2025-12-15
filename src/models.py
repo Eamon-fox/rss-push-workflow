@@ -27,6 +27,10 @@ class NewsItem(BaseModel):
     content: str = ""           # 原始内容 (摘要/正文片段)
     link: str = ""              # 原文链接
 
+    # 元数据
+    authors: list[str] = []     # 作者列表
+    doi: str = ""               # DOI
+
     # 溯源
     source_name: str = ""       # "Nature RSS", "PubMed", "科学网"
     source_url: str = ""        # 来源地址 (RSS URL 或网页)
@@ -40,6 +44,7 @@ class NewsItem(BaseModel):
 
     # 时间戳
     fetched_at: datetime = Field(default_factory=datetime.now)
+    published_at: datetime | None = None
 
     @computed_field
     @property

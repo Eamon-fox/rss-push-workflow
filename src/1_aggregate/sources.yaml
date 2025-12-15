@@ -16,3 +16,22 @@
 - name: Science
   type: rss
   url: https://www.science.org/action/showFeed?type=etoc&feed=rss&jc=science
+
+- name: Science AOP
+  type: rss
+  url: https://www.science.org/action/showFeed?type=axatoc&feed=rss&jc=science
+  enrich_via_pubmed: true
+
+- name: PubMed Topic_RTCB_Daily
+  type: pubmed
+  term: '(RTCB OR "tRNA ligase" OR IRE1) AND ("last 2 days"[dp])'
+  retmax: 50
+  # email: set via NCBI_EMAIL env var (recommended)
+  # api_key: set via NCBI_API_KEY env var (optional, higher rate limits)
+
+- name: PubMed Top_Journals_Speed
+  type: pubmed
+  term: '("Cell"[Journal] OR "Nature"[Journal] OR "Science"[Journal]) AND (aheadofprint[Filter] OR "online ahead of print") AND hasabstract'
+  retmax: 50
+  # email: set via NCBI_EMAIL env var (recommended)
+  # api_key: set via NCBI_API_KEY env var (optional, higher rate limits)

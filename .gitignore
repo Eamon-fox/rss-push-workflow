@@ -34,8 +34,8 @@ env/
 *~
 
 # Project specific
-data/*.db
-data/*.db-journal
+data/
+output/
 downloads/*.pdf
 logs/*.log
 *.log

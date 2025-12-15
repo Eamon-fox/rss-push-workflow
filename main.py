@@ -14,17 +14,14 @@ def run():
     """Run the complete pipeline."""
 
     # Config
-    sources = [
-        {"type": "rss", "url": "https://www.nature.com/neuro.rss", "name": "Nature Neuroscience"},
-    ]
     score_threshold = 6.0
 
     # Load dedup history
     seen_records = dedup.load()
 
-    # 1. Aggregate
+    # 1. Aggregate (uses sources.yaml)
     print("[1/5] Aggregating...")
-    items = aggregate.fetch_all(sources)
+    items = aggregate.fetch_all()
     total = len(items) if items else 0
     print(f"      {total} items")
 

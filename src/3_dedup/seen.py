@@ -1,14 +1,15 @@
-"""Cross-period deduplication using hash records."""
+"""Seen records management."""
 
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
 
 DEFAULT_FILE = "data/seen.json"
+MAX_AGE_DAYS = 7
 
 
 def load(filepath: str = DEFAULT_FILE) -> dict[str, str]:
-    """Load seen records {hash: timestamp}."""
+    """Load seen records {fingerprint: timestamp}."""
     path = Path(filepath)
     if not path.exists():
         return {}
@@ -24,24 +25,27 @@ def save(seen: dict[str, str], filepath: str = DEFAULT_FILE) -> None:
         json.dump(seen, f, indent=2)
 
 
-def is_seen(seen: dict, content_hash: str, window_hours: int = 72) -> bool:
-    """Check if seen within time window."""
-    if content_hash not in seen:
-        return False
-    seen_time = datetime.fromisoformat(seen[content_hash])
-    cutoff = datetime.now() - timedelta(hours=window_hours)
-    return seen_time > cutoff
+def is_seen(seen: dict, fingerprint: str) -> bool:
+    """Check if fingerprint exists in records."""
+    return fingerprint in seen
 
 
-def mark_seen(seen: dict, content_hash: str) -> None:
-    """Mark as seen now."""
-    seen[content_hash] = datetime.now().isoformat()
+def mark_seen(seen: dict, fingerprint: str) -> None:
+    """Mark fingerprint as seen now."""
+    seen[fingerprint] = datetime.now().isoformat()
 
 
-def cleanup(seen: dict, max_age_hours: int = 168) -> dict:
-    """Remove records older than max_age (default 7 days)."""
-    cutoff = datetime.now() - timedelta(hours=max_age_hours)
+def mark_batch(seen: dict, fingerprints: list[str]) -> None:
+    """Mark multiple fingerprints as seen."""
+    now = datetime.now().isoformat()
+    for fp in fingerprints:
+        seen[fp] = now
+
+
+def cleanup(seen: dict, max_age_days: int = MAX_AGE_DAYS) -> dict:
+    """Remove records older than max_age."""
+    cutoff = datetime.now() - timedelta(days=max_age_days)
     return {
-        h: t for h, t in seen.items()
-        if datetime.fromisoformat(t) > cutoff
+        fp: ts for fp, ts in seen.items()
+        if datetime.fromisoformat(ts) > cutoff
     }
