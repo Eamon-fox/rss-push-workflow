@@ -1,67 +1,65 @@
-"""ScholarPipe - Main entry point."""
+"""ScholarPipe - Academic news aggregation and AI digest."""
 
-from src.database import Database
-from src.aggregator import Aggregator
-from src.dedup import Deduplicator
-from src.screener import Screener
-from src.fetcher import Fetcher
-from src.digester import Digester
-from src.delivery import Delivery
+import os
+
+from src import aggregate
+from src import clean
+from src import dedup
+from src import seen
+from src import llm_process
+from src import deliver
 
 
-def run_pipeline():
+def run():
     """Run the complete ScholarPipe pipeline."""
 
-    # Initialize components
-    db = Database()
-    aggregator = Aggregator()
-    dedup = Deduplicator(db)
-    screener = Screener()
-    fetcher = Fetcher()
-    digester = Digester()
-    delivery = Delivery()
+    # Config (TODO: load from settings.yaml)
+    sources = [
+        {"type": "rss", "url": "https://www.nature.com/neuro.rss", "name": "Nature Neuroscience"},
+    ]
+    api_key = os.getenv("DEEPSEEK_API_KEY")
+    score_threshold = 6.0
 
-    # Step 1: Aggregate
-    print("[1/6] Aggregating papers...")
-    papers = aggregator.fetch("nature_rss")
+    # Load history for cross-period dedup
+    seen_records = seen.load()
 
-    # Step 2: Deduplicate
-    print("[2/6] Deduplicating...")
-    new_papers = []
-    for paper in papers:
-        if not dedup.exists(paper.doi):
-            db.insert(paper)
-            new_papers.append(paper)
+    # 1. Aggregate
+    print("[1/5] Aggregating from sources...")
+    items = aggregate.fetch_all(sources)
+    total = len(items)
+    print(f"      Found {total} items")
 
-    print(f"    Found {len(new_papers)} new papers")
+    # 2. Clean
+    print("[2/5] Cleaning content...")
+    items = clean.batch_clean(items)
 
-    # Step 3: Screen
-    print("[3/6] AI Screening...")
-    for paper in new_papers:
-        score, reason = screener.evaluate(paper.title, paper.abstract)
-        db.update_score(paper.doi, score, reason)
-        paper.score = score
+    # 3. Cross-period dedup (against history)
+    print("[3/5] Cross-period dedup...")
+    items = dedup.filter_unseen(items, seen_records)
+    after_dedup = len(items)
+    print(f"      {after_dedup} new items (filtered {total - after_dedup} seen)")
 
-    # Step 4: Fetch PDFs
-    print("[4/6] Fetching PDFs...")
-    high_score = [p for p in new_papers if p.score and p.score >= 6]
-    for paper in high_score:
-        pdf_path = fetcher.download(paper)
-        if pdf_path:
-            db.update_pdf_path(paper.doi, pdf_path)
-            paper.pdf_path = pdf_path
+    # 4. LLM Process (intra-period dedup + score + summarize)
+    print("[4/5] LLM processing...")
+    results = llm_process.process_batch(items, api_key, score_threshold)
+    print(f"      {len(results)} items recommended")
 
-    # Step 5: Deep Analysis
-    print("[5/6] Deep analysis...")
-    for paper in high_score:
-        if paper.pdf_path:
-            summary = digester.analyze(paper)
-            paper.summary = summary
+    # 5. Deliver
+    print("[5/5] Generating output...")
+    stats = {
+        "total": total,
+        "after_dedup": after_dedup,
+        "recommended": len(results)
+    }
+    deliver.to_console(results, stats)
+    deliver.to_json(results, "output/daily.json")
 
-    # Step 6: Deliver
-    print("[6/6] Outputting results...")
-    delivery.output(high_score)
+    # Save updated seen records
+    seen_records = seen.cleanup(seen_records)
+    seen.save(seen_records)
+
+    print(f"\nDone! Saved to output/daily.json")
 
 
 if __name__ == "__main__":
-    run_pipeline()
+    run()

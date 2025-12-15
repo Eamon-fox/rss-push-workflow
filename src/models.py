@@ -1,49 +1,53 @@
-"""Core data models for ScholarPipe."""
+"""Data models for ScholarPipe."""
 
 from datetime import datetime
 from enum import Enum
-from pydantic import BaseModel, Field
+import hashlib
+
+from pydantic import BaseModel, Field, computed_field
 
 
-class PaperStatus(str, Enum):
-    """Paper processing status."""
+class ItemStatus(str, Enum):
+    """Processing status."""
     NEW = "new"
-    SCREENED = "screened"
-    FETCHED = "fetched"
-    PROCESSED = "processed"
+    SCORED = "scored"
+    SUMMARIZED = "summarized"
+    DELIVERED = "delivered"
     SKIPPED = "skipped"
 
 
-class Paper(BaseModel):
-    """Core paper model that flows through the entire pipeline."""
+class NewsItem(BaseModel):
+    """
+    一条学术资讯 - 轻量级，只保留必要信息
+    把论文当新闻对待
+    """
 
-    doi: str | None = None
+    # 核心内容
     title: str
-    abstract: str = ""
-    authors: list[str] = Field(default_factory=list)
-    source: str = ""
-    url: str = ""
+    content: str = ""           # 原始内容 (摘要/正文片段)
+    link: str = ""              # 原文链接
 
-    # Processing metadata
-    score: float | None = None
-    score_reason: str = ""
-    status: PaperStatus = PaperStatus.NEW
-    pdf_path: str | None = None
-    summary: str = ""
+    # 溯源
+    source_name: str = ""       # "Nature RSS", "PubMed", "科学网"
+    source_url: str = ""        # 来源地址 (RSS URL 或网页)
 
-    # Timestamps
-    published_at: datetime | None = None
-    created_at: datetime = Field(default_factory=datetime.now)
-    updated_at: datetime = Field(default_factory=datetime.now)
+    # AI 处理结果
+    score: float | None = None  # 0-10
+    summary: str = ""           # 200字中文摘要
+
+    # 状态
+    status: ItemStatus = ItemStatus.NEW
+
+    # 时间戳
+    fetched_at: datetime = Field(default_factory=datetime.now)
+
+    @computed_field
+    @property
+    def content_hash(self) -> str:
+        """用于去重的内容哈希"""
+        text = f"{self.title}{self.content}".lower()
+        text = "".join(c for c in text if c.isalnum())
+        return hashlib.md5(text.encode()).hexdigest()
 
     class Config:
         use_enum_values = True
-
-
-class DedupeResult(BaseModel):
-    """Result of deduplication check."""
-
-    is_duplicate: bool
-    existing_doi: str | None = None
-    match_type: str = ""  # "exact_doi", "title_hash", "similar_title"
-    similarity: float = 0.0

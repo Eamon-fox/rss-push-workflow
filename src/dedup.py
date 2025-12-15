@@ -1,40 +1,34 @@
-"""Deduplication logic with 72-hour window."""
+"""Cross-period deduplication - filter out previously seen items."""
 
-import hashlib
-from datetime import datetime, timedelta
-
-from .models import Paper, DedupeResult
-from .database import Database
+from .models import NewsItem
+from . import seen
 
 
-class Deduplicator:
-    """Check and handle duplicate papers."""
+def filter_unseen(
+    items: list[NewsItem],
+    seen_records: dict[str, str],
+    window_hours: int = 72
+) -> list[NewsItem]:
+    """
+    Filter out items that were seen in previous runs.
 
-    def __init__(self, db: Database, window_hours: int = 72):
-        self.db = db
-        self.window_hours = window_hours
+    This is CROSS-PERIOD dedup (against history).
+    INTRA-PERIOD dedup (same research from different sources)
+    is handled by LLM in llm_process.py.
 
-    def check(self, paper: Paper) -> DedupeResult:
-        """Check if paper is a duplicate."""
-        # TODO: Implement full check logic
-        pass
+    Args:
+        items: Items from current run
+        seen_records: Historical {hash: timestamp} records
+        window_hours: Time window for dedup
 
-    def exists(self, doi: str) -> bool:
-        """Quick check: does this DOI exist?"""
-        if not doi:
-            return False
-        return self.db.exists_by_doi(doi)
+    Returns:
+        Items not seen in recent history
+    """
+    new_items = []
 
-    @staticmethod
-    def title_hash(title: str) -> str:
-        """Generate normalized title hash."""
-        # Remove punctuation, lowercase, hash
-        normalized = "".join(c.lower() for c in title if c.isalnum() or c.isspace())
-        normalized = " ".join(normalized.split())  # Normalize whitespace
-        return hashlib.md5(normalized.encode()).hexdigest()
+    for item in items:
+        if not seen.is_seen(seen_records, item.content_hash, window_hours):
+            seen.mark_seen(seen_records, item.content_hash)
+            new_items.append(item)
 
-    @staticmethod
-    def title_similarity(title1: str, title2: str) -> float:
-        """Calculate title similarity (0-1)."""
-        # TODO: Implement fuzzy matching
-        pass
+    return new_items

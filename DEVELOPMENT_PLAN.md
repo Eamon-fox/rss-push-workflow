@@ -1,232 +1,231 @@
 # ScholarPipe MVP 开发计划
 
-> 目标：搭建最小可运行框架，架构清晰，逐步迭代
+> 学术资讯聚合 + AI 摘要早报
 
 ---
 
-## 核心架构
+## 核心理念
+
+- **把论文当新闻对待**
+- 重点是**聚合**多源 + **清晰**呈现
+- 用户感兴趣自己点链接看原文
+- **无持久化**：数据在内存流转，输出后可丢弃
+
+---
+
+## 工作流架构 (5 步)
 
 ```
-┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│  Aggregator │───►│   Dedup     │───►│  Screener   │
-│  (数据聚合)  │    │  (去重网关)  │    │  (AI筛选)   │
-└─────────────┘    └─────────────┘    └─────────────┘
-                                             │
-                                             ▼
-┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│  Delivery   │◄───│  Digester   │◄───│   Fetcher   │
-│   (分发)    │    │  (深度解析)  │    │ (PDF下载)   │
-└─────────────┘    └─────────────┘    └─────────────┘
+┌───────────┐   ┌───────────┐   ┌───────────┐   ┌────────────────┐   ┌───────────┐
+│ aggregate │──►│   clean   │──►│   dedup   │──►│  llm_process   │──►│  deliver  │
+│  (聚合)   │   │  (清洗)   │   │(跨期去重) │   │(当期去重+评分) │   │  (输出)   │
+└───────────┘   └───────────┘   └───────────┘   └────────────────┘   └───────────┘
+                                      │                  │
+                                 seen.json          LLM API
+                               (历史记录)        (语义合并+评分+摘要)
 ```
 
-**数据流**: Paper 对象贯穿全流程，每个模块只做一件事
+### 两种去重
+
+| 类型 | 位置 | 目的 | 方法 |
+|------|------|------|------|
+| **跨期去重** | dedup.py | 前几天推送过的不再推 | hash + seen.json |
+| **当期去重** | llm_process.py | 本次不同来源报道同一研究 | LLM 语义合并 |
 
 ---
 
-## MVP 范围 (V0.1)
+## 数据模型
 
-| 模块 | MVP 实现 | 后续扩展 |
-|------|----------|----------|
-| Aggregator | 单个 RSS 源 | PubMed, BioRxiv |
-| Dedup | DOI 精确匹配 | 标题指纹, 相似度 |
-| Screener | 单个 LLM API | 多模型, 批量 |
-| Fetcher | Sci-Hub 直链 | Playwright 校园网 |
-| Digester | 仅保存摘要 | Marker 全文解析 |
-| Delivery | 控制台输出 | WordPress, Zotero |
+```python
+class NewsItem:
+    """一条学术资讯"""
+
+    # 核心内容
+    title: str
+    content: str          # 原始内容
+    link: str             # 原文链接
+
+    # 溯源
+    source_name: str      # "Nature RSS", "PubMed"
+    source_url: str
+    fetched_at: datetime
+
+    # AI 处理结果
+    score: float | None   # 0-10
+    summary: str          # 200字中文摘要
+
+    # 计算属性
+    content_hash: str     # 用于跨期去重
+```
 
 ---
 
-## 项目结构 (MVP)
+## 项目结构
 
 ```
 scholar-pipe/
 ├── src/
 │   ├── __init__.py
-│   ├── models.py         # 统一数据模型
-│   ├── database.py       # SQLite 操作
-│   ├── aggregator.py     # 数据聚合
-│   ├── dedup.py          # 去重
-│   ├── screener.py       # AI 筛选
-│   ├── fetcher.py        # PDF 下载
-│   ├── digester.py       # 深度解析
-│   └── delivery.py       # 分发
+│   ├── models.py            # NewsItem 数据模型
+│   ├── seen.py              # 历史记录存储
+│   ├── aggregate.py         # 步骤1: 多源聚合
+│   ├── clean.py             # 步骤2: 内容清洗
+│   ├── dedup.py             # 步骤3: 跨期去重
+│   ├── llm_process.py       # 步骤4: LLM处理 (当期去重+评分+摘要)
+│   └── deliver.py           # 步骤5: 输出
 ├── config/
-│   └── settings.yaml     # 配置
-├── data/                 # 数据库
-├── downloads/            # PDF 文件
-├── main.py               # 主入口
-├── requirements.txt
-└── pyproject.toml
+│   └── settings.yaml
+├── data/
+│   └── seen.json            # 历史 hash 记录
+├── output/                  # 输出目录
+├── main.py                  # 流程编排
+└── requirements.txt
 ```
 
 ---
 
-## Phase 0: 骨架搭建
+## 模块接口
 
-**目标**: 建立空壳框架，所有模块可调用
+### aggregate.py
+```python
+def fetch_rss(url: str, source_name: str) -> list[NewsItem]
+def fetch_all(sources: list[dict]) -> list[NewsItem]
+```
 
-- [ ] 创建项目目录结构
-- [ ] 定义核心数据模型 `Paper`
-- [ ] 各模块占位实现（pass）
-- [ ] main.py 串联调用
-- [ ] 能运行不报错
+### clean.py
+```python
+def clean(item: NewsItem) -> NewsItem
+def batch_clean(items: list[NewsItem]) -> list[NewsItem]
+```
+
+### seen.py
+```python
+def load(filepath: str) -> dict[str, str]
+def save(seen: dict, filepath: str) -> None
+def is_seen(seen: dict, hash: str, window_hours=72) -> bool
+def mark_seen(seen: dict, hash: str) -> None
+def cleanup(seen: dict, max_age_hours=168) -> dict
+```
+
+### dedup.py
+```python
+def filter_unseen(items: list[NewsItem], seen: dict, window_hours=72) -> list[NewsItem]
+```
+
+### llm_process.py
+```python
+def process_batch(items: list[NewsItem], api_key: str, score_threshold=6.0) -> list[NewsItem]
+# 输入: 跨期去重后的条目
+# 处理: 当期语义去重 + 评分 + 摘要
+# 输出: 高分条目
+```
+
+### deliver.py
+```python
+def to_console(items: list[NewsItem], stats: dict) -> None
+def to_json(items: list[NewsItem], path: str) -> None
+def to_markdown(items: list[NewsItem]) -> str
+```
 
 ---
 
-## Phase 1: 数据模型 + 数据库
-
-**目标**: Paper 对象能存取
+## 主流程 (main.py)
 
 ```python
-# models.py
-class Paper:
-    doi: str
-    title: str
-    abstract: str
-    source: str
-    score: float | None
-    status: str  # new, screened, fetched, processed
-    created_at: datetime
-```
+def run():
+    seen_records = seen.load()
 
-- [ ] Pydantic Paper 模型
-- [ ] SQLite 建表
-- [ ] CRUD 操作
+    # 1. 聚合
+    items = aggregate.fetch_all(sources)
+
+    # 2. 清洗
+    items = clean.batch_clean(items)
+
+    # 3. 跨期去重 (vs 历史)
+    items = dedup.filter_unseen(items, seen_records)
+
+    # 4. LLM 处理 (当期去重 + 评分 + 摘要)
+    results = llm_process.process_batch(items, api_key)
+
+    # 5. 输出
+    deliver.to_console(results, stats)
+
+    # 保存历史
+    seen.save(seen_records)
+```
 
 ---
 
-## Phase 2: 聚合 + 去重
+## LLM 处理逻辑
 
-**目标**: 从 RSS 拉取，去重后入库
+**Prompt**：
 
-```python
-# 伪代码
-papers = aggregator.fetch("nature_rss")  # 拉取
-for p in papers:
-    if not dedup.exists(p.doi):          # 去重
-        database.insert(p)               # 入库
 ```
+以下是今天抓取的学术资讯。请：
 
-- [ ] feedparser 解析 RSS
-- [ ] DOI 去重检查
-- [ ] 新论文入库
+1. 当期去重: 识别报道同一研究的条目，合并为一条
+2. 评分: 为每条独立研究评分 (0-10)
+3. 摘要: 为高分条目生成200字中文摘要
+
+输入:
+[1] RTCB mediates... (Nature RSS)
+[2] RNA repair enzyme... (PubMed)  <- 同一研究
+[3] 其他研究... (Cell RSS)
+
+输出 JSON:
+[
+  {"merged_from": [1,2], "title": "...", "score": 9.2, "summary": "..."},
+  {"merged_from": [3], "title": "...", "score": 7.5, "summary": "..."}
+]
+```
 
 ---
 
-## Phase 3: AI 筛选
+## 并行开发
 
-**目标**: 对新论文打分，过滤低分
-
-```python
-# 伪代码
-new_papers = database.get_by_status("new")
-for p in new_papers:
-    score = screener.evaluate(p.title, p.abstract)
-    database.update_score(p.doi, score)
-```
-
-- [ ] DeepSeek API 调用
-- [ ] 简单 Prompt: 打分 0-10
-- [ ] 更新数据库分数
-
----
-
-## Phase 4: PDF 获取 (简化版)
-
-**目标**: 高分论文尝试下载 PDF
-
-```python
-# 伪代码
-high_score = database.get_by_score(min=6)
-for p in high_score:
-    pdf_path = fetcher.download(p.doi)
-    database.update_pdf_path(p.doi, pdf_path)
-```
-
-- [ ] 构造下载 URL
-- [ ] httpx 下载
-- [ ] 保存文件
-
----
-
-## Phase 5: 输出
-
-**目标**: 汇总结果，简单展示
-
-```python
-# 伪代码
-results = database.get_today_processed()
-delivery.print_summary(results)
-```
-
-- [ ] 控制台格式化输出
-- [ ] 可选: 保存为 JSON
+| 开发线 | 模块 | 依赖 |
+|--------|------|------|
+| A | models.py | 无 |
+| B | aggregate.py + clean.py | models |
+| C | seen.py + dedup.py | models |
+| D | llm_process.py | models |
+| E | deliver.py | models |
 
 ---
 
 ## 开发顺序
 
 ```
-Day 1: Phase 0 (骨架) + Phase 1 (模型/数据库)
-Day 2: Phase 2 (聚合/去重)
-Day 3: Phase 3 (AI筛选)
-Day 4: Phase 4 (下载) + Phase 5 (输出)
-Day 5: 联调测试
+Phase 0: models.py
+    ↓
+Phase 1: aggregate.py (跑通一个 RSS)
+    ↓
+Phase 2: clean.py + seen.py + dedup.py
+    ↓
+Phase 3: llm_process.py (核心 AI 逻辑)
+    ↓
+Phase 4: deliver.py + main.py
 ```
 
 ---
 
-## 接口约定
+## 输出示例
 
-每个模块对外暴露统一接口：
-
-```python
-# aggregator.py
-def fetch(source_name: str) -> list[Paper]: ...
-
-# dedup.py
-def exists(doi: str) -> bool: ...
-def check(paper: Paper) -> DedupeResult: ...
-
-# screener.py
-def evaluate(title: str, abstract: str) -> float: ...
-
-# fetcher.py
-def download(doi: str) -> str | None: ...  # 返回文件路径
-
-# digester.py
-def analyze(pdf_path: str) -> str: ...  # 返回解读文本
-
-# delivery.py
-def output(papers: list[Paper]) -> None: ...
 ```
+══════════════════════════════════════════════════════════════════
+  ScholarPipe 学术早报 | 2024-01-15
+══════════════════════════════════════════════════════════════════
 
----
+------------------------------------------------------------------
+[9.2] RTCB mediates RNA repair in neurons
+来源: Nature Neuroscience (合并自 2 个来源)
 
-## 配置示例
+本研究揭示了 RNA 修复酶 RTCB 在神经元中的作用机制...
 
-```yaml
-# config/settings.yaml
-database:
-  path: data/history.db
+链接: https://www.nature.com/articles/s41593-024-xxx
+------------------------------------------------------------------
 
-sources:
-  - name: nature_neuro
-    type: rss
-    url: https://www.nature.com/neuro.rss
-
-screener:
-  api: deepseek
-  api_key: ${DEEPSEEK_API_KEY}
-  threshold: 6
-
-fetcher:
-  download_dir: downloads/
-  timeout: 30
+══════════════════════════════════════════════════════════════════
+ 共抓取 147 条 | 跨期去重后 89 条 | 推荐 12 条
+══════════════════════════════════════════════════════════════════
 ```
-
----
-
-## 立即开始
-
-现在执行 Phase 0：创建骨架文件
