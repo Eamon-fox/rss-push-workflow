@@ -11,7 +11,7 @@
 
 - name: Cell
   type: rss
-  url: https://www.cell.com/cell/rss
+  url: https://www.cell.com/cell/current.rss
 
 - name: Science
   type: rss
