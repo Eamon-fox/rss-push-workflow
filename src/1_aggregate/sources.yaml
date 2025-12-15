@@ -1,0 +1,18 @@
+# RSS 来源配置
+# 添加新来源只需在此追加
+
+- name: Nature Neuroscience
+  type: rss
+  url: https://www.nature.com/neuro.rss
+
+- name: Nature
+  type: rss
+  url: https://www.nature.com/nature.rss
+
+- name: Cell
+  type: rss
+  url: https://www.cell.com/cell/rss
+
+- name: Science
+  type: rss
+  url: https://www.science.org/action/showFeed?type=etoc&feed=rss&jc=science

@@ -1,20 +1,22 @@
-"""RSS feed fetcher."""
+"""RSS feed fetcher - universal for all RSS sources."""
 
 import feedparser
 from ..models import NewsItem
 
 
-def fetch_rss(url: str, source_name: str) -> list[NewsItem]:
+def fetch(source: dict) -> list[NewsItem]:
     """
-    Fetch items from RSS feed.
+    Fetch from RSS source.
 
     Args:
-        url: RSS feed URL
-        source_name: Display name for source
+        source: {"name": "...", "url": "..."}
 
     Returns:
         List of NewsItem
     """
+    url = source["url"]
+    name = source["name"]
+
     feed = feedparser.parse(url)
 
     items = []
@@ -23,21 +25,8 @@ def fetch_rss(url: str, source_name: str) -> list[NewsItem]:
             title=entry.get("title", ""),
             content=entry.get("summary", entry.get("description", "")),
             link=entry.get("link", ""),
-            source_name=source_name,
+            source_name=name,
             source_url=url,
         ))
 
     return items
-
-
-if __name__ == "__main__":
-    # Test with Nature Neuroscience
-    items = fetch_rss(
-        "https://www.nature.com/neuro.rss",
-        "Nature Neuroscience"
-    )
-    print(f"Found {len(items)} items")
-    for item in items[:3]:
-        print(f"- {item.title[:60]}...")
-        print(f"  {item.link}")
-        print()
