@@ -1,20 +1,14 @@
-"""Step 4: Deliver/output the processed news items."""
+"""Console and file output."""
 
 import json
 from datetime import datetime
 from pathlib import Path
 
-from .models import NewsItem
+from ..models import NewsItem
 
 
 def to_console(items: list[NewsItem], stats: dict | None = None) -> None:
-    """
-    Print formatted output to console.
-
-    Args:
-        items: Items to display
-        stats: Optional stats dict with counts
-    """
+    """Print formatted output to console."""
     today = datetime.now().strftime("%Y-%m-%d")
 
     print()
@@ -45,13 +39,7 @@ def to_console(items: list[NewsItem], stats: dict | None = None) -> None:
 
 
 def to_json(items: list[NewsItem], path: str) -> None:
-    """
-    Export items to JSON file.
-
-    Args:
-        items: Items to export
-        path: Output file path
-    """
+    """Export items to JSON file."""
     data = [item.model_dump() for item in items]
 
     Path(path).parent.mkdir(parents=True, exist_ok=True)
@@ -60,15 +48,7 @@ def to_json(items: list[NewsItem], path: str) -> None:
 
 
 def to_markdown(items: list[NewsItem]) -> str:
-    """
-    Generate markdown formatted output.
-
-    Args:
-        items: Items to format
-
-    Returns:
-        Markdown string
-    """
+    """Generate markdown formatted output."""
     today = datetime.now().strftime("%Y-%m-%d")
     lines = [f"# ScholarPipe 学术早报 | {today}\n"]
 

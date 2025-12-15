@@ -1,18 +1,16 @@
-"""Step 2: Clean and normalize content."""
+"""HTML and text cleaning utilities."""
 
 import re
 import html
 
-from .models import NewsItem
+from ..models import NewsItem
 
 
 def clean_html(text: str) -> str:
     """Remove HTML tags and decode entities."""
     if not text:
         return ""
-    # Decode HTML entities
     text = html.unescape(text)
-    # Remove HTML tags
     text = re.sub(r"<[^>]+>", "", text)
     return text
 
@@ -21,7 +19,6 @@ def clean_whitespace(text: str) -> str:
     """Normalize whitespace."""
     if not text:
         return ""
-    # Replace multiple spaces/newlines with single space
     text = re.sub(r"\s+", " ", text)
     return text.strip()
 
@@ -34,16 +31,7 @@ def truncate(text: str, max_length: int = 2000) -> str:
 
 
 def clean_text(text: str, max_length: int = 2000) -> str:
-    """
-    Full text cleaning pipeline.
-
-    Args:
-        text: Raw text
-        max_length: Maximum length
-
-    Returns:
-        Cleaned text
-    """
+    """Full text cleaning pipeline."""
     text = clean_html(text)
     text = clean_whitespace(text)
     text = truncate(text, max_length)
@@ -51,15 +39,7 @@ def clean_text(text: str, max_length: int = 2000) -> str:
 
 
 def clean(item: NewsItem) -> NewsItem:
-    """
-    Clean a single news item.
-
-    Args:
-        item: Raw NewsItem
-
-    Returns:
-        Cleaned NewsItem
-    """
+    """Clean a single news item."""
     return NewsItem(
         title=clean_whitespace(item.title),
         content=clean_text(item.content),
@@ -74,13 +54,5 @@ def clean(item: NewsItem) -> NewsItem:
 
 
 def batch_clean(items: list[NewsItem]) -> list[NewsItem]:
-    """
-    Clean multiple items.
-
-    Args:
-        items: Raw items
-
-    Returns:
-        Cleaned items
-    """
+    """Clean multiple items."""
     return [clean(item) for item in items]

@@ -1,6 +1,6 @@
-"""Cross-period deduplication - filter out previously seen items."""
+"""Cross-period deduplication filter."""
 
-from .models import NewsItem
+from ..models import NewsItem
 from . import seen
 
 
@@ -10,11 +10,7 @@ def filter_unseen(
     window_hours: int = 72
 ) -> list[NewsItem]:
     """
-    Filter out items that were seen in previous runs.
-
-    This is CROSS-PERIOD dedup (against history).
-    INTRA-PERIOD dedup (same research from different sources)
-    is handled by LLM in llm_process.py.
+    Filter out items seen in previous runs.
 
     Args:
         items: Items from current run
