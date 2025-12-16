@@ -1,0 +1,7 @@
+#!/bin/bash
+# Install PyTorch with CUDA 12.1 support
+
+pip install --upgrade --index-url https://download.pytorch.org/whl/cu121 \
+  torch==2.5.1+cu121 \
+  torchvision==0.20.1+cu121 \
+  torchaudio==2.5.1+cu121

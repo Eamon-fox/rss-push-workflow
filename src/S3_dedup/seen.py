@@ -13,8 +13,14 @@ def load(filepath: str = DEFAULT_FILE) -> dict[str, str]:
     path = Path(filepath)
     if not path.exists():
         return {}
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read().strip()
+            if not content:
+                return {}
+            return json.loads(content)
+    except (json.JSONDecodeError, ValueError):
+        return {}
 
 
 def save(seen: dict[str, str], filepath: str = DEFAULT_FILE) -> None:

@@ -52,12 +52,14 @@ def filter_unseen(
 def filter_duplicates_in_batch(items: list[NewsItem]) -> list[NewsItem]:
     """
     Remove duplicates within current batch (same fingerprint).
+    When duplicates found, keep the one with longer content.
 
     Returns:
-        Deduplicated items (first occurrence kept)
+        Deduplicated items (longer content preferred)
     """
-    seen_fps = set()
-    unique_items = []
+    # Map fingerprint -> (index in unique_items, content_length)
+    fp_to_idx: dict[str, int] = {}
+    unique_items: list[NewsItem] = []
 
     for item in items:
         fp = get_fingerprint(item)
@@ -65,9 +67,20 @@ def filter_duplicates_in_batch(items: list[NewsItem]) -> list[NewsItem]:
         if not fp:
             continue
 
-        if fp not in seen_fps:
-            seen_fps.add(fp)
+        content_len = len(item.content or "")
+
+        if fp not in fp_to_idx:
+            # First occurrence
+            fp_to_idx[fp] = len(unique_items)
             unique_items.append(item)
+        else:
+            # Duplicate found - keep the one with longer content
+            existing_idx = fp_to_idx[fp]
+            existing_len = len(unique_items[existing_idx].content or "")
+
+            if content_len > existing_len:
+                # Replace with longer version
+                unique_items[existing_idx] = item
 
     return unique_items
 

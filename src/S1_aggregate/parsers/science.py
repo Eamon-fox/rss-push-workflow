@@ -7,6 +7,20 @@ from ...models import NewsItem
 class ScienceParser(BaseParser):
     """Parser for Science RSS."""
 
+    _SKIP_PREFIXES = (
+        "correction",
+        "retraction",
+        "publisher correction",
+        "editorial expression of concern",
+    )
+
+    def should_skip_entry(self, entry: dict) -> bool:
+        title = (entry.get("title") or "").strip().lower()
+        if not title:
+            return False
+        normalized = title.replace(":", "")
+        return any(normalized.startswith(prefix) for prefix in self._SKIP_PREFIXES)
+
     def parse_entry(self, entry: dict) -> NewsItem:
         # Science: authors 格式同 Nature
         authors = []

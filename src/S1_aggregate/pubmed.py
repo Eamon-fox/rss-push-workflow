@@ -119,20 +119,22 @@ def enrich_items_by_doi(
     if not need:
         return items
 
-    doi_to_pmid: dict[str, str] = {}
     sleep_s = 0.12 if eutils.api_key else 0.34
 
-    for doi in need.keys():
-        term = f"{doi}[DOI]"
-        pmids = _esearch(term=term, retmax=1, eutils=eutils)
-        if pmids:
-            doi_to_pmid[doi] = pmids[0]
+    # Batch DOI -> PMID lookup:
+    # Some feeds (e.g. Science AOP) include only "Ahead of Print" in RSS summary,
+    # so enriching every DOI individually can be very slow. We instead search for
+    # multiple DOIs per ESearch request, then map results back by DOI after EFetch.
+    pmids: list[str] = []
+    for batch in _chunk_dois_for_esearch(list(need.keys())):
+        term = _build_doi_or_term(batch)
+        pmids.extend(_esearch(term=term, retmax=max(1, len(batch) * 2), eutils=eutils))
         time.sleep(sleep_s)
 
-    if not doi_to_pmid:
+    pmids = list(dict.fromkeys(pmids))
+    if not pmids:
         return items
 
-    pmids = list(dict.fromkeys(doi_to_pmid.values()))
     pubmed_items = _efetch(pmids, source_name="PubMed DOI Enrich", term="doi-enrich", eutils=eutils)
     pubmed_by_doi = {_normalize_doi(it.doi): it for it in pubmed_items if _normalize_doi(it.doi)}
 
@@ -155,6 +157,45 @@ def enrich_items_by_doi(
             updated[idx] = orig.model_copy(update=new_fields)
 
     return updated
+
+
+def _build_doi_or_term(dois: list[str]) -> str:
+    """Build an ESearch term that ORs multiple DOI queries."""
+    parts = [f"\"{doi}\"[DOI]" for doi in dois if doi]
+    if not parts:
+        return ""
+    if len(parts) == 1:
+        return parts[0]
+    return "(" + " OR ".join(parts) + ")"
+
+
+def _chunk_dois_for_esearch(dois: list[str], *, max_terms: int = 20, max_len: int = 3500) -> list[list[str]]:
+    """
+    Chunk DOIs so the ESearch query stays within a safe length.
+
+    Notes:
+      - max_len is conservative to avoid very long URLs/query strings.
+      - max_terms caps per-request workload to keep latency predictable.
+    """
+    batches: list[list[str]] = []
+    current: list[str] = []
+    current_len = 0
+
+    for doi in [d for d in dois if d]:
+        token = f"\"{doi}\"[DOI]"
+        extra = len(token) + (4 if current else 0)  # " OR "
+        if current and (len(current) >= max_terms or current_len + extra > max_len):
+            batches.append(current)
+            current = [doi]
+            current_len = len(token)
+            continue
+
+        current.append(doi)
+        current_len += extra
+
+    if current:
+        batches.append(current)
+    return batches
 
 
 def _efetch(pmids: Iterable[str], *, source_name: str, term: str, eutils: _EutilsConfig) -> list[NewsItem]:

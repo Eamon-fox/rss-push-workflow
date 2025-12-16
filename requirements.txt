@@ -14,14 +14,15 @@ playwright>=1.40.0
 
 # LLM APIs
 openai>=1.0.0  # For DeepSeek-compatible API
+zai-sdk>=0.1.0  # Zhipu official SDK
 
 # Utilities
 python-dotenv>=1.0.0
 
 # Step 4 hybrid filter (local vectors)
 numpy>=1.26
-sentence-transformers>=2.6.0
+sentence-transformers>=3.0.0
+torch>=2.5.1  # Install the matching CUDA wheel manually for GPU acceleration (see PyTorch download instructions)
 
-# Prefer CPU-only torch wheels (much smaller than default CUDA wheels).
---extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.5.1+cpu
+# Testing
+pytest>=9.0.0

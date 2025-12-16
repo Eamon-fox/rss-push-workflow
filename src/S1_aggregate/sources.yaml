@@ -1,0 +1,111 @@
+# RSS 来源配置
+# 添加新来源只需在此追加
+# 支持的type: rss, pubmed
+
+# ============================================================
+# 一手源：顶级期刊
+# ============================================================
+
+- name: Nature Neuroscience
+  type: rss
+  url: https://www.nature.com/neuro.rss
+
+- name: Nature
+  type: rss
+  url: https://www.nature.com/nature.rss
+
+- name: Nature Genetics
+  type: rss
+  url: https://www.nature.com/ng/rss
+
+- name: Nature Cell Biology
+  type: rss
+  url: https://www.nature.com/ncb.rss
+
+- name: Cell
+  type: rss
+  url: https://www.cell.com/cell/current.rss
+
+- name: Science
+  type: rss
+  url: https://www.science.org/action/showFeed?type=etoc&feed=rss&jc=science
+
+- name: Science AOP
+  type: rss
+  url: https://www.science.org/action/showFeed?type=axatoc&feed=rss&jc=science
+  enrich_via_pubmed: true
+
+# ============================================================
+# 一手源：预印本 (bioRxiv/medRxiv)
+# ============================================================
+# bioRxiv RSS: http://connect.biorxiv.org/biorxiv_xml.php?subject=<subject>
+# 可选subject: all, animal_behavior, biochemistry, bioengineering, bioinformatics,
+#   biophysics, cancer_biology, cell_biology, developmental_biology, ecology,
+#   epidemiology, evolutionary_biology, genetics, genomics, immunology, microbiology,
+#   molecular_biology, neuroscience, paleontology, pathology, pharmacology,
+#   physiology, plant_biology, scientific_communication, synthetic_biology,
+#   systems_biology, zoology
+
+- name: bioRxiv Neuroscience
+  type: rss
+  url: http://connect.biorxiv.org/biorxiv_xml.php?subject=neuroscience
+
+- name: bioRxiv Cell Biology
+  type: rss
+  url: http://connect.biorxiv.org/biorxiv_xml.php?subject=cell_biology
+
+- name: bioRxiv Molecular Biology
+  type: rss
+  url: http://connect.biorxiv.org/biorxiv_xml.php?subject=molecular_biology
+
+# ============================================================
+# 一手源：PubMed 搜索
+# ============================================================
+
+- name: PubMed Topic_RTCB_Daily
+  type: pubmed
+  term: '(RTCB OR "tRNA ligase" OR IRE1) AND ("last 2 days"[dp])'
+  retmax: 50
+
+- name: PubMed Top_Journals_Speed
+  type: pubmed
+  term: '("Cell"[Journal] OR "Nature"[Journal] OR "Science"[Journal]) AND (aheadofprint[Filter] OR "online ahead of print") AND hasabstract'
+  retmax: 50
+
+# ============================================================
+# 二手源：公众号 (需要第三方RSS服务)
+# ============================================================
+# 推荐服务:
+# - Feeddd: https://feeddd.org/ (免费，需要关注公众号获取)
+# - WeRSS: https://werss.app/ (付费)
+# - RSSHub: https://docs.rsshub.app/routes/new-media#wei-xin (需自建)
+
+# 取消注释并替换为实际的RSS URL:
+# - name: BioArt
+#   type: rss
+#   url: https://feeddd.org/feeds/xxxxx  # 替换为实际URL
+#
+# - name: 科研圈
+#   type: rss
+#   url: https://feeddd.org/feeds/xxxxx  # 替换为实际URL
+#
+# - name: 知识分子
+#   type: rss
+#   url: https://feeddd.org/feeds/xxxxx  # 替换为实际URL
+
+# ============================================================
+# 二手源：科学新闻网站
+# ============================================================
+
+- name: Phys.org Biology
+  type: rss
+  url: https://phys.org/rss-feed/biology-news/
+
+- name: Science Daily
+  type: rss
+  url: https://www.sciencedaily.com/rss/top/science.xml
+
+# 科学网 (中文)
+# - name: 科学网
+#   type: rss
+#   url: https://www.sciencenet.cn/xml/news.aspx?news=0  # 需确认是否可用

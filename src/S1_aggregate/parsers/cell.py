@@ -9,6 +9,20 @@ from ...models import NewsItem
 class CellParser(BaseParser):
     """Parser for Cell Press RSS."""
 
+    _SKIP_PREFIXES = (
+        "correction:",
+        "publisher correction:",
+        "author correction:",
+        "retraction notice",
+        "erratum",
+    )
+
+    def should_skip_entry(self, entry: dict) -> bool:
+        title = (entry.get("title") or "").strip().lower()
+        if not title:
+            return False
+        return any(title.startswith(prefix) for prefix in self._SKIP_PREFIXES)
+
     def parse_entry(self, entry: dict) -> NewsItem:
         # Cell: authors 是 [{"name": "A, B, C"}] 单个字符串，需拆分
         authors = []

@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rm:*)",
+      "Bash(curl:*)",
+      "Bash(if exist \"%USERPROFILE%\\.claude.json\" type \"%USERPROFILE%\\.claude.json\")",
+      "Bash(cat:*)",
+      "Bash(ping:*)",
+      "Bash(python:*)",
+      "Bash(echo:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}

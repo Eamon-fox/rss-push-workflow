@@ -9,6 +9,24 @@ screener:
   threshold: 6
   max_concurrent: 5
 
+llm:
+  provider: siliconflow  # ollama (local), zhipu (cloud), or siliconflow (cloud)
+  # Ollama settings (local)
+  ollama:
+    base_url: http://localhost:11434
+    model: qwen3:8b
+    concurrency: 1      # local GPU limited
+  # Zhipu settings (cloud)
+  zhipu:
+    model: glm-4.6       # or glm-4.5-air
+    allow_thinking: false
+    concurrency: 5       # cloud API can handle more
+  # SiliconFlow settings (cloud)
+  siliconflow:
+    model: Qwen/Qwen3-8B
+    enable_thinking: false
+    concurrency: 5
+
 fetcher:
   download_dir: downloads/
   timeout: 30

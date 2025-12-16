@@ -1,0 +1,145 @@
+# 第4步混合过滤配置
+
+# 语义相似度阈值 (0-1)
+semantic_threshold: 0.61
+
+# VIP关键词 (正则表达式) - 命中即保留，不受阈值限制
+vip_keywords:
+  - \bRTCB\b
+  - tRNA ligase
+  - \bIRE1\b
+  - \bXBP1\b
+  - \bUPR\b
+  - \bRNA liga\b
+
+# 通用生物学关键词 (用于Layer1粗筛)
+# 不包含这些词的文章直接过滤
+bio_keywords:
+  # 分子生物学
+  - rna
+  - dna
+  - protein
+  - peptide
+  - nucleotide
+  - chromatin
+  - histone
+  - epigenet
+  - proteom
+  - kinase
+  - phosphatas
+  - phosphoryl
+  - proteas
+  - ligase
+  - hydrolase
+  - polymeras
+  # 细胞类型
+  - neuron
+  - glia
+  - astrocyt
+  - microglia
+  - neutrophil
+  - macrophag
+  - lymphocyt
+  - fibroblast
+  - oocyt
+  - sperm
+  # 细胞器
+  - mitochond
+  - ribosom
+  - lysosom
+  - chloroplast
+  # 神经递质
+  - dopamin
+  - serotonin
+  - glutamat
+  # 疾病
+  - cancer
+  - tumor
+  - carcinom
+  - leukem
+  - lymphom
+  - alzheim
+  - parkinson
+  - diabet
+  # 免疫
+  - antibod
+  - antigen
+  - cytokin
+  - antibiotic
+  - vaccin
+  # 病原体
+  - virus
+  - viral
+  - bacteri
+  - pathogen
+  - fungal
+  - fungi
+  - toxoplasm
+  - parasit
+  # 技术
+  - cryo
+  - crystallograph
+  - crispr
+  - sequenc
+  # 遗传学
+  - gene
+  - genom
+  - genetic
+  - mutat
+  - transcript
+  # 神经科学
+  - brain
+  - neural
+  - cortex
+  - hippocam
+  - synap
+  - cognitiv
+  # 细胞/组织
+  - cell
+  - tissue
+  # 免疫
+  - immun
+  - inflamm
+  - infect
+  # 发育/生理
+  - embryo
+  - ovar
+  - reproduct
+  - fertiliz
+  - mammal
+  - vertebrat
+  - hormon
+  - aging
+  - ageing
+  - lifespan
+  # 微生物
+  - microb
+  - microorganism
+  - mosquit
+  # 植物
+  - chlorophyll
+  - photosyn
+  - pollinat
+  - plant
+  - xylem
+  - phloem
+  - seed
+  - dormancy
+  - germination
+  # 生化
+  - biosynthes
+  - metabol
+  - receptor
+  - ligand
+  - enzym
+  # 生理
+  - regulat
+  - signal
+  - pathway
+  # 复合词
+  - stem cell
+  - t cell
+  - b cell
+  - cell line
+  - cell type
+  - cell death
