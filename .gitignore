@@ -56,3 +56,4 @@ htmlcov/
 
 # Playwright
 playwright/.cache/
+.claude/settings.local.json
