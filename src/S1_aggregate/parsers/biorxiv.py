@@ -24,8 +24,8 @@ class BiorxivParser(BaseParser):
         title = entry.get("title", "")
         link = entry.get("link", "")
 
-        # 摘要
-        content = entry.get("summary", entry.get("description", ""))
+        # 摘要 - 使用基类方法获取最佳内容
+        content = self._extract_content(entry)
 
         # 作者 - dc:creator 通常是逗号分隔的字符串
         authors = []

@@ -8,10 +8,19 @@ class ScienceParser(BaseParser):
     """Parser for Science RSS."""
 
     _SKIP_PREFIXES = (
+        # 勘误/撤稿
         "correction",
         "retraction",
         "publisher correction",
         "editorial expression of concern",
+        "erratum",
+        # 新闻摘要/目录
+        "in other journals",
+        "in science journals",
+        "this week in science",
+        # 编辑内容 (非研究)
+        "editors' choice",
+        "editor's choice",
     )
 
     def should_skip_entry(self, entry: dict) -> bool:
@@ -36,7 +45,7 @@ class ScienceParser(BaseParser):
 
         return NewsItem(
             title=entry.get("title", ""),
-            content=entry.get("summary", entry.get("description", "")),
+            content=self._extract_content(entry),
             link=entry.get("link", ""),
             authors=authors,
             doi=doi,

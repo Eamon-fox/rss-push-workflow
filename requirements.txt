@@ -24,5 +24,9 @@ numpy>=1.26
 sentence-transformers>=3.0.0
 torch>=2.5.1  # Install the matching CUDA wheel manually for GPU acceleration (see PyTorch download instructions)
 
+# API server
+fastapi>=0.104.0
+uvicorn>=0.24.0
+
 # Testing
 pytest>=9.0.0

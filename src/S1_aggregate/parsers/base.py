@@ -118,3 +118,21 @@ class BaseParser(ABC):
         """检查URL是否看起来像图片."""
         lower = url.lower()
         return any(ext in lower for ext in [".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg"])
+
+    def _extract_content(self, entry: dict) -> str:
+        """
+        从RSS entry中提取最佳内容/摘要.
+
+        优先级: content (if longer) > summary > description
+        """
+        summary = entry.get("summary", "") or entry.get("description", "") or ""
+
+        # 检查content字段 (feedparser返回为list of dicts)
+        content = ""
+        if "content" in entry and entry["content"]:
+            content_list = entry["content"]
+            if isinstance(content_list, list) and content_list:
+                content = content_list[0].get("value", "")
+
+        # 返回更长的那个
+        return content if len(content) > len(summary) else summary

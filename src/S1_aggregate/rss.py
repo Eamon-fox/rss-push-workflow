@@ -80,13 +80,27 @@ def _generic_parse(entries: list, source_name: str, source_url: str) -> list[New
         published_at = _extract_published_at(entry)
         items.append(NewsItem(
             title=entry.get("title", ""),
-            content=entry.get("summary", entry.get("description", "")),
+            content=_extract_content(entry),
             link=entry.get("link", ""),
             source_name=source_name,
             source_url=source_url,
             published_at=published_at,
         ))
     return items
+
+
+def _extract_content(entry: dict) -> str:
+    """Extract best content from RSS entry (content > summary > description)."""
+    summary = entry.get("summary", "") or entry.get("description", "") or ""
+
+    # Check content field (feedparser returns as list of dicts)
+    content = ""
+    if "content" in entry and entry["content"]:
+        content_list = entry["content"]
+        if isinstance(content_list, list) and content_list:
+            content = content_list[0].get("value", "")
+
+    return content if len(content) > len(summary) else summary
 
 
 def _extract_published_at(entry: dict) -> datetime | None:

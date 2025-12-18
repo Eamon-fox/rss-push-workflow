@@ -2,9 +2,40 @@
 
 import argparse
 import importlib
+import logging
 import sys
 from datetime import datetime
 from pathlib import Path
+
+
+# ─────────────────────────────────────────────────────────────
+# Logging setup
+# ─────────────────────────────────────────────────────────────
+
+def setup_logging():
+    """Configure logging to file and console."""
+    log_dir = Path("logs")
+    log_dir.mkdir(exist_ok=True)
+
+    today = datetime.now().strftime("%Y-%m-%d")
+    log_file = log_dir / f"{today}.log"
+
+    # File handler (detailed)
+    file_handler = logging.FileHandler(log_file, encoding="utf-8")
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(logging.Formatter(
+        "%(asctime)s | %(name)s | %(levelname)s | %(message)s",
+        datefmt="%H:%M:%S"
+    ))
+
+    # Configure root logger
+    logging.basicConfig(
+        level=logging.INFO,
+        handlers=[file_handler]
+    )
+
+    return log_file
+
 
 # Import pipeline steps
 aggregate = importlib.import_module("src.S1_aggregate")
@@ -109,6 +140,13 @@ Examples:
     )
 
     parser.add_argument(
+        "--html",
+        type=str,
+        default=None,
+        help="Output HTML file path (default: same as --output with .html extension)"
+    )
+
+    parser.add_argument(
         "--no-llm",
         action="store_true",
         help="Skip LLM processing (for testing pipeline)"
@@ -127,6 +165,13 @@ Examples:
         help="Date to load raw data from (default: today). Format: YYYY-MM-DD"
     )
 
+    parser.add_argument(
+        "--top",
+        type=int,
+        default=20,
+        help="Number of top articles to include in daily report (default: 20)"
+    )
+
     return parser.parse_args()
 
 
@@ -134,6 +179,12 @@ def run(args=None):
     """Run the complete pipeline."""
     if args is None:
         args = parse_args()
+
+    # Initialize logging
+    log_file = setup_logging()
+    logger = logging.getLogger(__name__)
+    logger.info("=" * 60)
+    logger.info("ScholarPipe started")
 
     print_header()
 
@@ -235,17 +286,9 @@ def run(args=None):
     after_filter = len(items)
 
     print_detail("Layer 1 (bio keywords)", f"passed {stats.total - stats.layer1_dropped}, dropped {stats.layer1_dropped}")
-    print_detail("Layer 2 - VIP keywords", f"kept {stats.layer2_vip_kept}")
-    print_detail("Layer 2 - Semantic score", f"kept {stats.layer2_semantic_kept}, dropped {stats.layer2_semantic_dropped}")
-
-    # Show semantic score distribution for kept items
-    scored_items = [it for it in items if it.semantic_score is not None]
-    if scored_items:
-        scores = [it.semantic_score for it in scored_items]
-        avg_score = sum(scores) / len(scores)
-        min_score = min(scores)
-        max_score = max(scores)
-        print_detail("Semantic scores", f"avg={avg_score:.3f}, min={min_score:.3f}, max={max_score:.3f}")
+    print_detail("Layer 2 (tiered scoring)", f"kept {stats.layer2_kept}, dropped {stats.layer2_dropped}")
+    if stats.avg_final_score > 0:
+        print_detail("Final scores", f"avg={stats.avg_final_score:.3f}, min={stats.min_final_score:.3f}, max={stats.max_final_score:.3f}")
 
     print_step_end(before_filter, after_filter)
 
@@ -255,6 +298,14 @@ def run(args=None):
         seen_records = dedup.cleanup(seen_records)
         dedup.save(seen_records)
         return
+
+    # ─────────────────────────────────────────────────────────
+    # Truncate to top N before LLM (save resources)
+    # ─────────────────────────────────────────────────────────
+    items = sort_results(items)  # Sort by semantic score first
+    if len(items) > args.top:
+        print(f"[Truncate] Keeping top {args.top} of {len(items)} items for daily report")
+        items = items[:args.top]
 
     # ─────────────────────────────────────────────────────────
     # Step 6: LLM Summarize (生成中文摘要)
@@ -274,12 +325,16 @@ def run(args=None):
             model_info = f"{provider}/{llm_cfg['ollama_model']}"
         elif provider == "siliconflow":
             model_info = f"{provider}/{llm_cfg['siliconflow_model']}"
+        elif provider == "mimo":
+            model_info = f"{provider}/{llm_cfg.get('mimo_model', 'mimo-v2-flash')}"
         else:
             model_info = f"{provider}/{llm_cfg['zhipu_model']}"
         print_detail("Model", f"{model_info} (concurrency={get_concurrency()})")
 
         items, llm_stats = llm.summarize_batch(items)
         print_detail("Summarized", f"{llm_stats.success}/{llm_stats.total}")
+        if llm_stats.cached > 0:
+            print_detail("From cache", llm_stats.cached)
         if llm_stats.failed > 0:
             print_detail("Failed", llm_stats.failed)
 
@@ -303,6 +358,16 @@ def run(args=None):
     with open(markdown_path, "w", encoding="utf-8") as f:
         f.write(md_content)
     print_detail("Markdown saved", str(markdown_path))
+
+    # HTML output
+    html_path = args.html or str(Path(args.output).with_suffix(".html"))
+    stats = {
+        "total": total,
+        "after_dedup": after_dedup,
+        "after_filter": after_filter,
+    }
+    deliver.to_html_file(results, html_path, stats)
+    print_detail("HTML saved", html_path)
 
     # Save dedup history
     dedup.mark_batch(seen_records, new_fps)
@@ -341,7 +406,9 @@ def run(args=None):
             print(f"  ... and {len(results) - 5} more")
         print()
 
-    print("[OK] Done!")
+    logger.info("ScholarPipe completed successfully")
+    logger.info("=" * 60)
+    print(f"[OK] Done! (log: {log_file})")
 
 
 if __name__ == "__main__":

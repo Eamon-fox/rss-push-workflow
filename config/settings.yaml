@@ -1,16 +1,7 @@
 # ScholarPipe Configuration
 
-database:
-  path: data/history.db
-
-screener:
-  model: deepseek
-  # api_key: set via DEEPSEEK_API_KEY env var
-  threshold: 6
-  max_concurrent: 5
-
 llm:
-  provider: siliconflow  # ollama (local), zhipu (cloud), or siliconflow (cloud)
+  provider: mimo  # ollama (local), zhipu (cloud), siliconflow (cloud), or mimo (cloud)
   # Ollama settings (local)
   ollama:
     base_url: http://localhost:11434
@@ -24,21 +15,37 @@ llm:
   # SiliconFlow settings (cloud)
   siliconflow:
     model: Qwen/Qwen3-8B
-    enable_thinking: false
+    enable_thinking: true  # 启用推理模式，提升摘要质量
+    concurrency: 5
+  # MiMo settings (cloud)
+  mimo:
+    model: mimo-v2-flash
+    enable_thinking: false  # 启用推理模式
     concurrency: 5
 
-fetcher:
-  download_dir: downloads/
-  timeout: 30
-  retry: 3
+semantic:
+  # Model presets: "dev" (local CPU), "prod" (local GPU), "api" (cloud API), "custom"
+  preset: api  # dev | prod | api | custom
 
-delivery:
-  console: true
-  wordpress:
-    enabled: false
-    # url: https://your-site.com
-    # username: set via WP_USERNAME env var
-    # password: set via WP_PASSWORD env var
-  zotero:
-    enabled: false
-    # api_key: set via ZOTERO_API_KEY env var
+  # Embedding cache (reduces redundant model calls)
+  cache_enabled: true  # Cache embeddings in data/embedding_cache.db
+
+  # Preset configurations:
+  # - dev: all-MiniLM-L6-v2 (~80MB, CPU, fast for testing, 384 dim)
+  # - prod: BAAI/bge-m3 (~2GB, GPU required, best quality, 1024 dim)
+  # - api: DashScope text-embedding-v4 (cloud, no local GPU needed, 1024 dim)
+
+  # API settings (only used when preset: api)
+  api:
+    provider: dashscope  # dashscope | siliconflow
+    model: text-embedding-v4
+    dimension: 1024  # 512 | 1024 | 2048
+    concurrency: 4
+
+  # Custom model settings (only used when preset: custom)
+  custom:
+    model_id: sentence-transformers/all-MiniLM-L6-v2
+    device: cpu  # cpu | cuda
+
+  batch_size: 16
+  local_files_only: true  # Set true if models pre-downloaded

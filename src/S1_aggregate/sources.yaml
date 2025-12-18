@@ -3,16 +3,16 @@
 # 支持的type: rss, pubmed
 
 # ============================================================
-# 一手源：顶级期刊
+# 一手源：顶级期刊 - Nature 系列
 # ============================================================
-
-- name: Nature Neuroscience
-  type: rss
-  url: https://www.nature.com/neuro.rss
 
 - name: Nature
   type: rss
   url: https://www.nature.com/nature.rss
+
+- name: Nature Neuroscience
+  type: rss
+  url: https://www.nature.com/neuro.rss
 
 - name: Nature Genetics
   type: rss
@@ -22,18 +22,182 @@
   type: rss
   url: https://www.nature.com/ncb.rss
 
+- name: Nature Methods
+  type: rss
+  url: https://www.nature.com/nmeth.rss
+
+- name: Nature Structural & Molecular Biology
+  type: rss
+  url: https://www.nature.com/nsmb.rss
+
+- name: Nature Chemical Biology
+  type: rss
+  url: https://www.nature.com/nchembio.rss
+
+- name: Nature Communications
+  type: rss
+  url: https://www.nature.com/ncomms.rss
+
+- name: Nature Biotechnology
+  type: rss
+  url: https://www.nature.com/nbt.rss
+
+- name: Nature Medicine
+  type: rss
+  url: https://www.nature.com/nm.rss
+
+- name: Nature Reviews Molecular Cell Biology
+  type: rss
+  url: https://www.nature.com/nrm.rss
+
+- name: Nature Reviews Genetics
+  type: rss
+  url: https://www.nature.com/nrg.rss
+
+# ============================================================
+# 一手源：顶级期刊 - Cell 系列
+# ============================================================
+
 - name: Cell
   type: rss
   url: https://www.cell.com/cell/current.rss
 
+- name: Molecular Cell
+  type: rss
+  url: https://www.cell.com/molecular-cell/current.rss
+
+- name: Cell Reports
+  type: rss
+  url: https://www.cell.com/cell-reports/current.rss
+
+- name: Neuron
+  type: rss
+  url: https://www.cell.com/neuron/current.rss
+
+- name: Cell Stem Cell
+  type: rss
+  url: https://www.cell.com/cell-stem-cell/current.rss
+
+- name: Cancer Cell
+  type: rss
+  url: https://www.cell.com/cancer-cell/current.rss
+
+- name: Immunity
+  type: rss
+  url: https://www.cell.com/immunity/current.rss
+
+- name: Developmental Cell
+  type: rss
+  url: https://www.cell.com/developmental-cell/current.rss
+
+- name: Cell Metabolism
+  type: rss
+  url: https://www.cell.com/cell-metabolism/current.rss
+
+- name: Cell Chemical Biology
+  type: rss
+  url: https://www.cell.com/cell-chemical-biology/current.rss
+
+# ============================================================
+# 一手源：顶级期刊 - Science 系列
+# ============================================================
+
 - name: Science
   type: rss
   url: https://www.science.org/action/showFeed?type=etoc&feed=rss&jc=science
+  enrich_via_pubmed: true
+  enrich_min_content_len: 200  # RSS只有元数据，需要补充
 
 - name: Science AOP
   type: rss
   url: https://www.science.org/action/showFeed?type=axatoc&feed=rss&jc=science
   enrich_via_pubmed: true
+  enrich_min_content_len: 200
+
+- name: Science Advances
+  type: rss
+  url: https://www.science.org/action/showFeed?type=etoc&feed=rss&jc=sciadv
+  enrich_via_pubmed: true
+  enrich_min_content_len: 200
+
+- name: Science Signaling
+  type: rss
+  url: https://www.science.org/action/showFeed?type=etoc&feed=rss&jc=signaling
+  enrich_via_pubmed: true
+  enrich_min_content_len: 200
+
+# ============================================================
+# 一手源：其他顶级期刊
+# ============================================================
+
+- name: PNAS
+  type: rss
+  url: https://www.pnas.org/action/showFeed?type=etoc&feed=rss&jc=pnas
+  enrich_via_pubmed: true
+
+- name: eLife
+  type: rss
+  url: https://elifesciences.org/rss/recent.xml
+
+- name: PLoS Biology
+  type: rss
+  url: https://journals.plos.org/plosbiology/feed/atom
+
+- name: PLoS Genetics
+  type: rss
+  url: https://journals.plos.org/plosgenetics/feed/atom
+
+- name: EMBO Journal
+  type: rss
+  url: https://www.embopress.org/action/showFeed?jc=emboj&type=etoc&feed=rss
+
+- name: EMBO Reports
+  type: rss
+  url: https://www.embopress.org/action/showFeed?jc=embor&type=etoc&feed=rss
+
+- name: Nucleic Acids Research
+  type: rss
+  url: https://academic.oup.com/rss/site_5127/3091.xml
+
+# ============================================================
+# 一手源：RNA 专业期刊
+# ============================================================
+
+- name: RNA
+  type: rss
+  url: https://rnajournal.cshlp.org/rss/current.xml
+
+- name: RNA Biology
+  type: rss
+  url: https://www.tandfonline.com/feed/rss/krnb20
+
+- name: Genes & Development
+  type: rss
+  url: https://genesdev.cshlp.org/rss/current.xml
+
+# ============================================================
+# 一手源：细胞/分子生物学期刊
+# ============================================================
+
+- name: Journal of Cell Biology
+  type: rss
+  url: https://rupress.org/jcb/rss/recent
+
+- name: Journal of Biological Chemistry
+  type: rss
+  url: https://www.jbc.org/rss/recent.xml
+
+- name: Current Biology
+  type: rss
+  url: https://www.cell.com/current-biology/current.rss
+
+- name: Genome Research
+  type: rss
+  url: https://genome.cshlp.org/rss/current.xml
+
+- name: Genome Biology
+  type: rss
+  url: https://genomebiology.biomedcentral.com/articles/most-recent/rss.xml
 
 # ============================================================
 # 一手源：预印本 (bioRxiv/medRxiv)
@@ -58,19 +222,89 @@
   type: rss
   url: http://connect.biorxiv.org/biorxiv_xml.php?subject=molecular_biology
 
+- name: bioRxiv Biochemistry
+  type: rss
+  url: http://connect.biorxiv.org/biorxiv_xml.php?subject=biochemistry
+
+- name: bioRxiv Genetics
+  type: rss
+  url: http://connect.biorxiv.org/biorxiv_xml.php?subject=genetics
+
+- name: bioRxiv Genomics
+  type: rss
+  url: http://connect.biorxiv.org/biorxiv_xml.php?subject=genomics
+
+- name: bioRxiv Immunology
+  type: rss
+  url: http://connect.biorxiv.org/biorxiv_xml.php?subject=immunology
+
+- name: bioRxiv Cancer Biology
+  type: rss
+  url: http://connect.biorxiv.org/biorxiv_xml.php?subject=cancer_biology
+
+- name: bioRxiv Developmental Biology
+  type: rss
+  url: http://connect.biorxiv.org/biorxiv_xml.php?subject=developmental_biology
+
+- name: bioRxiv Systems Biology
+  type: rss
+  url: http://connect.biorxiv.org/biorxiv_xml.php?subject=systems_biology
+
+- name: bioRxiv Bioinformatics
+  type: rss
+  url: http://connect.biorxiv.org/biorxiv_xml.php?subject=bioinformatics
+
 # ============================================================
 # 一手源：PubMed 搜索
 # ============================================================
 
+# 核心主题：tRNA剪接、RNA连接酶
 - name: PubMed Topic_RTCB_Daily
   type: pubmed
-  term: '(RTCB OR "tRNA ligase" OR IRE1) AND ("last 2 days"[dp])'
-  retmax: 50
+  term: '(RTCB OR "tRNA ligase" OR "RNA ligase" OR "tRNA splicing") AND ("last 7 days"[dp])'
+  retmax: 100
 
+# 核心主题：UPR/ER应激
+- name: PubMed Topic_UPR_Daily
+  type: pubmed
+  term: '(IRE1 OR XBP1 OR "unfolded protein response" OR "ER stress") AND ("last 7 days"[dp])'
+  retmax: 100
+
+# 核心主题：RNA剪接
+- name: PubMed Topic_RNA_Splicing
+  type: pubmed
+  term: '("RNA splicing" OR "pre-mRNA splicing" OR spliceosome) AND ("last 7 days"[dp])'
+  retmax: 100
+
+# 核心主题：RNA修饰
+- name: PubMed Topic_RNA_Modification
+  type: pubmed
+  term: '("RNA modification" OR "m6A" OR "RNA methylation" OR pseudouridine) AND ("last 7 days"[dp])'
+  retmax: 100
+
+# 核心主题：非编码RNA
+- name: PubMed Topic_ncRNA
+  type: pubmed
+  term: '("non-coding RNA" OR lncRNA OR circRNA OR "small RNA") AND ("last 7 days"[dp])'
+  retmax: 100
+
+# 核心主题：增强子/调控元件
+- name: PubMed Topic_Enhancer
+  type: pubmed
+  term: '(enhancer OR "enhancer RNA" OR eRNA OR "super-enhancer" OR "cis-regulatory") AND ("last 7 days"[dp])'
+  retmax: 100
+
+# 核心主题：转座子/移动元件
+- name: PubMed Topic_Transposon
+  type: pubmed
+  term: '(transposon OR transposable OR retrotransposon OR "mobile element" OR "LINE-1" OR "Alu element") AND ("last 7 days"[dp])'
+  retmax: 100
+
+# 顶刊速报 (扩展期刊列表)
 - name: PubMed Top_Journals_Speed
   type: pubmed
-  term: '("Cell"[Journal] OR "Nature"[Journal] OR "Science"[Journal]) AND (aheadofprint[Filter] OR "online ahead of print") AND hasabstract'
-  retmax: 50
+  term: '("Cell"[Journal] OR "Nature"[Journal] OR "Science"[Journal] OR "Molecular Cell"[Journal] OR "EMBO J"[Journal] OR "Genes Dev"[Journal] OR "Nucleic Acids Res"[Journal] OR "RNA"[Journal]) AND (aheadofprint[Filter] OR "online ahead of print") AND hasabstract'
+  retmax: 150
 
 # ============================================================
 # 二手源：公众号 (需要第三方RSS服务)
@@ -105,7 +339,100 @@
   type: rss
   url: https://www.sciencedaily.com/rss/top/science.xml
 
+- name: EurekAlert Life Sciences
+  type: rss
+  url: https://www.eurekalert.org/rss/biology.xml
+
 # 科学网 (中文)
 # - name: 科学网
 #   type: rss
 #   url: https://www.sciencenet.cn/xml/news.aspx?news=0  # 需确认是否可用
+
+# ============================================================
+# 补充期刊：结构/分子
+# ============================================================
+
+- name: Structure
+  type: rss
+  url: https://www.cell.com/structure/current.rss
+
+- name: Molecular Biology of the Cell
+  type: rss
+  url: https://www.molbiolcell.org/action/showFeed?type=etoc&feed=rss&jc=mboc
+
+# Journal of Molecular Biology - ScienceDirect 403
+# Journal of Cell Science - Biologists.com 404
+
+# ============================================================
+# 补充期刊：生化
+# ============================================================
+
+- name: Biochemistry (ACS)
+  type: rss
+  url: https://pubs.acs.org/action/showFeed?type=axatoc&feed=rss&jc=bichaw
+
+- name: FEBS Journal
+  type: rss
+  url: https://febs.onlinelibrary.wiley.com/feed/17424658/most-recent
+
+- name: FEBS Letters
+  type: rss
+  url: https://febs.onlinelibrary.wiley.com/feed/18733468/most-recent
+
+# Biochemical Journal - Portland Press 404
+
+# ============================================================
+# 补充期刊：遗传学
+# ============================================================
+
+# Genetics (GSA) - OUP 404
+# Human Molecular Genetics - OUP 404
+
+- name: American Journal of Human Genetics
+  type: rss
+  url: https://www.cell.com/ajhg/current.rss
+
+# ============================================================
+# 补充期刊：方法
+# ============================================================
+
+- name: Nature Protocols
+  type: rss
+  url: https://www.nature.com/nprot.rss
+
+- name: Cell Reports Methods
+  type: rss
+  url: https://www.cell.com/cell-reports-methods/current.rss
+
+# ============================================================
+# 补充期刊：综述
+# ============================================================
+
+- name: Trends in Cell Biology
+  type: rss
+  url: https://www.cell.com/trends/cell-biology/current.rss
+
+- name: Trends in Biochemical Sciences
+  type: rss
+  url: https://www.cell.com/trends/biochemical-sciences/current.rss
+
+# Current Opinion in Cell Biology - Cell.com 404
+# Current Opinion in Structural Biology - ScienceDirect 403
+# Annual Review of Biochemistry - AnnualReviews 403
+# Annual Review of Cell and Dev Biology - AnnualReviews 403
+
+# ============================================================
+# 补充期刊：开放获取
+# ============================================================
+
+- name: Communications Biology
+  type: rss
+  url: https://www.nature.com/commsbio.rss
+
+# ============================================================
+# 深度报道 & 科普
+# ============================================================
+
+- name: Quanta Magazine Biology
+  type: rss
+  url: https://quantamagazine.org/biology/feed/

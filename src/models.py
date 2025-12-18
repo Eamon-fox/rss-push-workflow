@@ -56,6 +56,7 @@ class NewsItem(BaseModel):
     source_type: SourceType = SourceType.JOURNAL  # 来源类型
     source_name: str = ""       # "Nature", "PubMed", "BioArt"
     source_url: str = ""        # 来源地址 (RSS URL 或网页)
+    journal_name: str = ""      # 期刊名称 (用于PubMed来源显示原始期刊)
 
     # === 多媒体 ===
     image_url: str = ""         # 主配图 (Graphical Abstract)

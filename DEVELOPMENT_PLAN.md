@@ -1,4 +1,4 @@
-# ScholarPipe MVP 开发计划
+# ScholarPipe 开发文档
 
 > 学术资讯聚合 + AI 摘要早报
 
@@ -12,136 +12,94 @@
 
 ---
 
-## 工作流架构 (6 步)
+## 工作流架构 (7 步)
 
 ```
-┌─────────────┐   ┌─────────────┐   ┌─────────────┐   ┌────────────┐   ┌────────────────┐   ┌─────────────┐
-│ 1_aggregate │──►│  2_clean    │──►│  3_dedup    │──►│  4_filter  │──►│    5_llm       │──►│  6_deliver  │
-│   (聚合)    │   │  (清洗)     │   │ (指纹去重)  │   │(关键词过滤)│   │ (语义去重+评分) │   │   (输出)    │
-└─────────────┘   └─────────────┘   └─────────────┘   └────────────┘   └────────────────┘   └─────────────┘
-       │                                   │                 │                  │
-  sources.yaml                        seen.json        BIO_KEYWORDS         LLM API
-  parsers/                          (已检阅记录)      (生物学词根)      (合并+评分+摘要)
+┌─────────────┐   ┌─────────────┐   ┌─────────────┐   ┌────────────┐   ┌────────────┐   ┌─────────────┐   ┌─────────────┐
+│ 1_aggregate │──►│  2_clean    │──►│  3_dedup    │──►│  4_filter  │──►│  5_enrich  │──►│   6_llm     │──►│  7_deliver  │
+│   (聚合)    │   │  (清洗)     │   │ (指纹去重)  │   │(混合过滤)  │   │ (PubMed)   │   │  (摘要)     │   │   (输出)    │
+└─────────────┘   └─────────────┘   └─────────────┘   └────────────┘   └────────────┘   └─────────────┘   └─────────────┘
+       │                                   │                 │                │                │
+  sources.yaml                        seen.json      filter.yaml +      DOI→Abstract      LLM API
+  parsers/                          (已检阅记录)   semantic_anchors                    (评分+摘要)
 ```
 
 ### 分层过滤漏斗
 
 ```
-226 items (采集)
+~500 items (采集自75个来源)
     ↓
 3_dedup: 指纹比对
     ↓ 去除重复
-178 items (去重后)
+~400 items
     ↓
-4_filter: 关键词过滤
+4_filter Layer1: 生物学关键词粗筛
     ↓ 过滤非生物学文章
-120 items (~67%)
+~250 items (~60%)
     ↓
-5_llm: AI 打分
-    ↓ 过滤低分
-~N items (高分入选)
-```
-
-关键词过滤可节省 ~33% 的 LLM token 成本。
-
----
-
-## 去重策略
-
-### 核心原则：只要看一眼，就要记下来
-
-**问题**：如果只记录"入选日报的条目"，被 AI 判低分丢弃的文章第二天还在 RSS 里，会被重复送给 AI 打分，浪费 token。
-
-**解决**：记录所有**已检阅**的条目，无论最终是入选还是丢弃。
-
-```
-Day 1: 文章A → AI打分 2分 → 丢弃 → 记录指纹 ✓
-Day 2: 文章A → 指纹比对 → 已存在 → 直接跳过（零成本）
-```
-
-### 指纹策略 (Fingerprinting)
-
-为每篇文章计算唯一指纹，优先级：
-
-| 优先级 | 规则 | 说明 |
-|--------|------|------|
-| 1 | DOI | 最可靠，标准化后直接作为 ID |
-| 2 | Title Hash | 没有 DOI 时，标题归一化后计算 MD5 |
-
-```python
-def get_fingerprint(item: NewsItem) -> str:
-    if item.doi:
-        return normalize_doi(item.doi)  # "10.1038/s41586-xxx"
-    return hash_title(item.title)       # "a1b2c3d4..."
-```
-
-归一化规则：
-- DOI: 去前缀 `doi:`、`https://doi.org/`，小写
-- Title: 小写 + 去标点 + 去多余空格 → MD5
-
-### seen.json 格式
-
-```json
-{
-  "10.1038/s41586-025-xxx": "2025-12-15T10:00:00",
-  "a1b2c3d4e5f6...": "2025-12-15T10:00:00"
-}
-```
-
-记录保留 7 天后自动清理（等文章从 RSS 源消失）。
-
-### 去重流程
-
-```
-144 items (采集)
+4_filter Layer2: 语义相似度 + VIP关键词
+    ↓ 按研究方向打分
+~50 items (threshold 0.50)
     ↓
-3_dedup: 指纹比对 seen.json
-    ↓ 过滤已见过的
-~N items (真正新的)
+5_enrich: PubMed补充摘要 (可选)
     ↓
-4_llm: AI 打分 + 语义合并
-    ↓ 全量记录指纹（包括被丢弃的）
-~M items (高分入选)
+6_llm: AI 摘要生成
     ↓
-5_deliver: 输出日报
+7_deliver: 输出日报
 ```
 
 ---
 
-## RSS 数据特点
+## 第4步：混合过滤 (Hybrid Filter)
 
-| 来源 | 条目数 | 覆盖范围 | 日期字段 | 特点 |
-|------|--------|----------|----------|------|
-| Nature | ~75 | 5天 | `updated` | 按天更新 |
-| Nature Neuro | ~8 | 4天 | `updated` | 按天更新 |
-| Cell | ~21 | ~2个月 | `prism_publicationdate` | 按期更新 |
-| Science | ~40 | 1天为主 | `prism_coverdate` | 集中发布 |
+### 两层过滤
+
+**Layer 1: 生物学关键词粗筛**
+- 200个生物学词根 (config/filter.yaml)
+- 快速过滤明显无关文章
+
+**Layer 2: 语义 + VIP 加权**
+- 向量相似度：文章 vs semantic_anchors.json
+- VIP关键词分层加权 (tier1: ×1.50, tier2: ×1.30, tier3: ×1.15)
+- 最终分数 = max_similarity × tier_multiplier × vip_multiplier + coverage_bonus
+
+### 向量模型配置 (config/settings.yaml)
+
+```yaml
+semantic:
+  preset: dev | prod | api | custom
+  # dev: all-MiniLM-L6-v2 (CPU, 384dim, 80MB)
+  # prod: BAAI/bge-m3 (GPU, 1024dim, 2GB)
+  # api: DashScope text-embedding-v4 (云端)
+```
 
 ---
 
-## 数据模型
+## RSS 来源 (75个)
 
-```python
-class NewsItem:
-    """一条学术资讯"""
+| 类别 | 来源数 | 说明 |
+|------|--------|------|
+| Nature 系列 | 14 | Nature, Nat Neuro, Nat Genet, Nat Comm, Nat Protocols... |
+| Cell 系列 | 16 | Cell, Mol Cell, Neuron, Trends系列... |
+| Science 系列 | 4 | Science, Science AOP, Science Adv, Science Signal |
+| 其他顶刊 | 10 | PNAS, eLife, PLoS Bio, EMBO J, NAR... |
+| bioRxiv | 12 | 各学科分类 |
+| PubMed 搜索 | 8 | 主题检索 (RTCB, UPR, RNA splicing...) |
+| 补充期刊 | 8 | Structure, FEBS, ACS Biochemistry... |
+| 新闻/科普 | 3 | Phys.org, Science Daily, Quanta |
 
-    # 核心内容
-    title: str
-    content: str          # 摘要/描述
-    link: str             # 原文链接
+### 解析器架构
 
-    # 元数据
-    authors: list[str]    # 作者列表
-    doi: str              # DOI（用于去重）
-
-    # 溯源
-    source_name: str      # "Nature", "Cell", "Science"
-    source_url: str       # RSS URL
-    fetched_at: datetime
-
-    # AI 处理结果
-    score: float | None   # 0-10
-    summary: str          # 200字中文摘要
+```
+parsers/
+├── base.py          # BaseParser 抽象类
+├── nature.py        # Nature系列 (含MBoC, Comm Bio)
+├── cell.py          # Cell Press系列
+├── science.py       # Science系列
+├── biorxiv.py       # bioRxiv/medRxiv
+├── wiley.py         # FEBS Journal/Letters
+├── acs.py           # ACS Biochemistry
+└── wechat.py        # 公众号/新闻站
 ```
 
 ---
@@ -152,188 +110,129 @@ class NewsItem:
 rss-push-workflow/
 ├── src/
 │   ├── models.py                 # NewsItem 数据模型
-│   ├── infra/                    # 基础设施
-│   │   └── llm.py                # LLM 客户端 (Zhipu GLM-4-Flash)
+│   ├── infra/
+│   │   └── llm.py                # LLM 客户端 (Zhipu/SiliconFlow/Ollama)
 │   │
-│   ├── 1_aggregate/              # 步骤1: 多源聚合
-│   │   ├── __init__.py           # fetch_all(), load_sources()
-│   │   ├── __main__.py           # 独立运行
+│   ├── S1_aggregate/             # 步骤1: 多源聚合
 │   │   ├── rss.py                # RSS 抓取器
+│   │   ├── pubmed.py             # PubMed 抓取 + DOI enrichment
 │   │   ├── sources.yaml          # 来源配置
 │   │   └── parsers/              # 差异化解析器
-│   │       ├── base.py
-│   │       ├── nature.py
-│   │       ├── cell.py
-│   │       └── science.py
 │   │
-│   ├── 2_clean/                  # 步骤2: 内容清洗
-│   │   ├── __init__.py           # batch_clean()
-│   │   ├── __main__.py
+│   ├── S2_clean/                 # 步骤2: 内容清洗
 │   │   └── html.py               # HTML清洗
 │   │
-│   ├── 3_dedup/                  # 步骤3: 指纹去重
-│   │   ├── __init__.py
-│   │   ├── __main__.py
-│   │   ├── fingerprint.py        # 指纹计算
-│   │   ├── seen.py               # 历史记录管理
+│   ├── S3_dedup/                 # 步骤3: 指纹去重
+│   │   ├── fingerprint.py        # 指纹计算 (DOI/Title hash)
 │   │   └── filter.py             # 去重过滤器
 │   │
-│   ├── 4_filter/                 # 步骤4: 关键词过滤
-│   │   ├── __init__.py
-│   │   ├── __main__.py
-│   │   └── bio_keywords.py       # 生物学关键词过滤
+│   ├── S4_filter/                # 步骤4: 混合过滤
+│   │   ├── hybrid.py             # Layer1 + Layer2 过滤
+│   │   ├── config.py             # 配置加载
+│   │   └── bio_keywords.py       # 生物学关键词
 │   │
-│   ├── 5_llm/                    # 步骤5: LLM处理
-│   │   ├── __init__.py
-│   │   ├── __main__.py
-│   │   └── process.py            # 语义去重+评分+摘要
+│   ├── S5_enrich/                # 步骤5: PubMed补充
+│   │   └── enrich.py             # DOI→PubMed abstract
 │   │
-│   └── 6_deliver/                # 步骤6: 输出
-│       ├── __init__.py
-│       ├── __main__.py
-│       └── console.py            # 控制台/文件输出
+│   ├── S6_llm/                   # 步骤6: LLM处理
+│   │   └── process.py            # 摘要生成
+│   │
+│   └── S7_deliver/               # 步骤7: 输出
+│       ├── console.py            # 控制台输出
+│       └── html.py               # HTML输出
+│
+├── config/
+│   ├── settings.yaml             # 全局配置 (LLM, semantic)
+│   ├── filter.yaml               # 过滤配置 (VIP关键词, 阈值)
+│   ├── semantic_anchors.json     # 语义锚点 (分层)
+│   └── user_profile.yaml         # 用户画像 (LLM prompt)
 │
 ├── data/
-│   ├── raw/                      # 第一步产出：原始抓取
-│   │   └── {date}/
-│   │       ├── nature.json
-│   │       ├── cell.json
-│   │       └── all.json
-│   ├── cleaned/                  # 第二步产出：清洗后
-│   │   └── {date}/
-│   │       └── all.json
-│   ├── deduped/                  # 第三步产出：去重后
-│   │   └── {date}/
-│   │       └── all.json
-│   ├── filtered/                 # 第四步产出：关键词过滤后
-│   │   └── {date}/
-│   │       └── all.json
-│   └── seen.json                 # 历史指纹记录
+│   ├── raw/{date}/               # 原始抓取
+│   ├── cleaned/{date}/           # 清洗后
+│   ├── deduped/{date}/           # 去重后
+│   ├── filtered/{date}/          # 过滤后
+│   ├── seen.json                 # 历史指纹
+│   └── embedding_cache.db        # 向量缓存
 │
 ├── output/                       # 最终输出
-├── main.py                       # 流程编排
-└── requirements.txt
+└── main.py                       # 流程编排
 ```
 
 ---
 
-## 模块接口
+## 配置文件说明
 
-### 1_aggregate
-```python
-def fetch_all(sources=None, save_raw=True) -> list[NewsItem]
-def load_sources() -> list[dict]
-```
-> 2025-12-15?Nature / Nature Neuroscience / Science / Cell ?????? RSS ??????????Author/Publisher Correction??Retraction??Erratum???????????????????????? LLM?
+### config/settings.yaml
 
-输出：`data/raw/{date}/*.json`
+```yaml
+llm:
+  provider: zhipu | siliconflow | ollama
+  zhipu:
+    model: glm-4.6
+    concurrency: 5
+  siliconflow:
+    model: Qwen/Qwen3-8B
+    enable_thinking: true
 
-### 2_clean
-```python
-def batch_clean(items: list[NewsItem]) -> list[NewsItem]
-```
-
-### 3_dedup
-```python
-# fingerprint.py
-def get_fingerprint(item: NewsItem) -> str
-
-# seen.py
-def load(filepath="data/seen.json") -> dict[str, str]
-def save(seen: dict, filepath="data/seen.json") -> None
-def mark_seen(seen: dict, fingerprint: str) -> None
-def cleanup(seen: dict, max_age_days=7) -> dict
-
-# filter.py
-def filter_unseen(items: list[NewsItem], seen: dict) -> list[NewsItem]
+semantic:
+  preset: dev | prod | api | custom
+  cache_enabled: true
+  api:
+    provider: dashscope
+    model: text-embedding-v4
 ```
 
-### 4_filter
-```python
-# bio_keywords.py
-BIO_KEYWORDS: list[str]  # 110个生物学词根
+### config/filter.yaml
 
-def has_bio_keyword(title: str, content: str) -> tuple[bool, list[str]]
-def filter_bio(items: list[NewsItem]) -> tuple[list[NewsItem], list[NewsItem]]
-# 返回 (通过的, 被过滤的)
+```yaml
+final_threshold: 0.50
+
+vip_keywords:
+  tier1:
+    multiplier: 1.50
+    patterns: [RTCB, tRNA ligase, tRNA splicing]
+  tier2:
+    multiplier: 1.30
+    patterns: [IRE1, XBP1, UPR, ...]
+  tier3:
+    multiplier: 1.15
+    patterns: [enhancer, transposon, ...]
+
+bio_keywords: [rna, dna, protein, ...]  # 200个词根
 ```
-
-### 5_llm
-```python
-def process_batch(items: list[NewsItem], score_threshold=6.0) -> list[NewsItem]
-# 返回高分条目，同时记录所有处理过的指纹
-```
-
-### 6_deliver
-```python
-def to_console(items: list[NewsItem], stats: dict) -> None
-def to_json(items: list[NewsItem], path: str) -> None
-def to_markdown(items: list[NewsItem]) -> str
-```
-
----
-
-## 主流程 (main.py)
-
-```python
-def run():
-    seen_records = dedup.load()
-
-    # 1. 聚合
-    items = aggregate.fetch_all()
-    total = len(items)
-
-    # 2. 清洗
-    items = clean.batch_clean(items)
-
-    # 3. 指纹去重（过滤已见过的）
-    items, new_fingerprints = dedup.filter_unseen(items, seen_records)
-    after_dedup = len(items)
-
-    # 4. 关键词过滤（过滤非生物学文章）
-    items, filtered = filter.filter_bio(items)
-    after_filter = len(items)
-
-    # 5. LLM 处理 + 记录（成功才记录，失败不记录可重试）
-    try:
-        results = llm.process_batch(items)
-
-        # 成功：全量记录指纹（包括被丢弃的低分条目）
-        dedup.mark_batch(seen_records, new_fingerprints)
-        seen_records = dedup.cleanup(seen_records)
-        dedup.save(seen_records)
-    except Exception as e:
-        print(f"LLM failed: {e}, not saving seen records (will retry next run)")
-        raise
-
-    # 6. 输出
-    stats = {
-        "total": total,
-        "after_dedup": after_dedup,
-        "after_filter": after_filter,
-        "recommended": len(results)
-    }
-    deliver.to_console(results, stats)
-```
-
-**记录策略**：见过即记录，但 LLM 失败时不保存（下次可重试）
 
 ---
 
 ## 当前进度
 
-- [x] models.py - NewsItem (含 authors, doi)
-- [x] 1_aggregate - RSS 聚合 + 差异化解析器
-- [x] 2_clean - HTML 清洗
-- [x] 3_dedup - 指纹去重（DOI/Title hash）
-- [x] 4_filter - 生物学关键词过滤（110个词根，~33%过滤率）
-- [ ] 5_llm - 语义去重 + 评分 + 摘要
-- [ ] 6_deliver - 输出
-- [ ] main.py - 流程编排
+- [x] 1_aggregate - RSS聚合 + 差异化解析器 (75来源, 7种解析器)
+- [x] 2_clean - HTML清洗
+- [x] 3_dedup - 指纹去重 (DOI/Title hash)
+- [x] 4_filter - 混合过滤 (关键词 + 语义 + VIP加权)
+- [x] 5_enrich - PubMed摘要补充 (enrich_via_pubmed)
+- [x] 6_llm - 摘要生成 (Zhipu/SiliconFlow)
+- [x] 7_deliver - 输出 (console/json/html)
+- [x] main.py - 流程编排
 
-### 已知问题
+### 质量优化功能
 
-- Science AOP 解析器缺少摘要提取（content 为空），导致只能通过标题匹配关键词
+**负向锚点 (Negative Anchors)**
+- 配置位置：`config/semantic_anchors.yaml` 的 `negative:` 部分
+- 作用：匹配临床试验/农业应用/纯计算方法/综述评论等非目标内容时降权
+- 参数：`config/filter.yaml` 中 `negative_anchor.threshold` 和 `negative_anchor.penalty`
+- 公式：`final_score = ... × negative_penalty` (默认命中时 ×0.6)
 
+**用户反馈收集**
+- HTML输出带反馈按钮 (thumbs up/down)
+- 点击跟踪 (自动记录)
+- 浏览器端存储 + 导出JSON功能
+- 后端存储：`data/feedback.json`
+- 导入功能：`src/infra/feedback.py` 中 `import_from_browser_export()`
+- 统计查看：`get_feedback_stats()`
 
-sudo密码8300110fyM
+### 已解决问题
+
+- Science/PNAS RSS无摘要 → `enrich_via_pubmed: true` + `enrich_min_content_len: 200`
+- FEBS content字段取错 → 解析器使用 `_extract_content()` 优先取更长内容
+- 向量模型无法下载 → 支持 DashScope 云端 API

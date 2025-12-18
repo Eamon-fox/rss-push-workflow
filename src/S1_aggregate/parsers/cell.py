@@ -43,7 +43,7 @@ class CellParser(BaseParser):
 
         return NewsItem(
             title=entry.get("title", ""),
-            content=entry.get("summary", entry.get("description", "")),
+            content=self._extract_content(entry),
             link=entry.get("link", ""),
             authors=authors,
             doi=doi,

@@ -1,111 +1,287 @@
 #!/usr/bin/env python
-"""Step 4: Filter - 测试混合过滤功能"""
+"""Step 4: Hybrid Filter - 单元测试"""
 
-import importlib
-import json
 import sys
 from pathlib import Path
 
-# 添加项目根目录到路径
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-filt = importlib.import_module("src.S4_filter")
 from src.models import NewsItem
+from src.S4_filter.hybrid import (
+    _item_text,
+    _find_vip_keywords,
+    _aggregate_semantic_score,
+    _sort_by_semantic,
+    HybridFilterStats,
+)
+from src.S4_filter.config import (
+    GENERAL_BIO_KEYWORDS,
+    VIP_KEYWORDS,
+    SEMANTIC_ANCHORS,
+    THRESHOLD_NORMAL,
+)
 
 
-def load_deduped_data() -> list[NewsItem]:
-    """从data/deduped目录加载最新的去重后数据"""
-    deduped_dir = Path("data/deduped")
-    if not deduped_dir.exists():
-        return []
+class TestItemText:
+    """测试文本提取"""
 
-    date_dirs = sorted([d for d in deduped_dir.iterdir() if d.is_dir()], reverse=True)
-    if not date_dirs:
-        return []
+    def test_combines_title_and_content(self):
+        """应合并标题和内容"""
+        item = NewsItem(
+            title="Test Title",
+            content="Test Content",
+            source_name="Test",
+        )
+        text = _item_text(item)
+        assert "Test Title" in text
+        assert "Test Content" in text
 
-    latest = date_dirs[0] / "all.json"
-    if not latest.exists():
-        return []
+    def test_handles_empty_content(self):
+        """应处理空内容"""
+        item = NewsItem(
+            title="Test Title",
+            content="",
+            source_name="Test",
+        )
+        text = _item_text(item)
+        assert "Test Title" in text
 
-    with open(latest, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    def test_truncates_long_text(self):
+        """应截断长文本"""
+        item = NewsItem(
+            title="Title",
+            content="x" * 3000,
+            source_name="Test",
+        )
+        text = _item_text(item, max_len=100)
+        assert len(text) <= 100
 
-    return [NewsItem(**item) for item in data]
+
+class TestFindVipKeywords:
+    """测试 VIP 关键词查找"""
+
+    def test_finds_rtcb(self):
+        """应找到 RTCB 关键词"""
+        text = "RTCB is an essential RNA ligase enzyme"
+        keywords = _find_vip_keywords(text)
+        assert len(keywords) > 0  # RTCB 是 VIP 关键词
+
+    def test_finds_ire1(self):
+        """应找到 IRE1 关键词"""
+        text = "IRE1 activation during ER stress"
+        keywords = _find_vip_keywords(text)
+        assert len(keywords) > 0  # IRE1 是 VIP 关键词
+
+    def test_finds_xbp1(self):
+        """应找到 XBP1 关键词"""
+        text = "XBP1 splicing in unfolded protein response"
+        keywords = _find_vip_keywords(text)
+        assert len(keywords) > 0  # XBP1 是 VIP 关键词
+
+    def test_no_match(self):
+        """无匹配应返回空列表"""
+        text = "General biology research on plants"
+        keywords = _find_vip_keywords(text)
+        assert keywords == []
 
 
-def create_test_items() -> list[NewsItem]:
-    """创建测试数据"""
-    return [
-        # VIP 关键词命中
-        NewsItem(
-            title="RTCB ligase in tRNA splicing",
-            content="Study reveals RTCB role in RNA processing and cellular stress response.",
-            source_name="Nature",
-        ),
-        # 生物关键词命中，高语义相关
-        NewsItem(
-            title="CRISPR gene editing advances",
-            content="New CRISPR technique enables precise genome editing in mammalian cells.",
-            source_name="Science",
-        ),
-        # 生物关键词命中，低语义相关
-        NewsItem(
-            title="Plant biology discovery",
-            content="Researchers found new chloroplast mechanism in plant photosynthesis.",
-            source_name="Cell",
-        ),
-        # 非生物内容
-        NewsItem(
-            title="Climate change report",
-            content="Global temperatures continue to rise according to new climate data.",
-            source_name="News",
-        ),
-    ]
+class TestAggregateSemanticScore:
+    """测试语义分数聚合"""
+
+    def test_single_score(self):
+        """单个分数应直接返回"""
+        score = _aggregate_semantic_score([0.8])
+        assert score == 0.8
+
+    def test_empty_scores(self):
+        """空分数应返回 0"""
+        score = _aggregate_semantic_score([])
+        assert score == 0.0
+
+    def test_multiple_scores_boost(self):
+        """多个高分应有轻微加成"""
+        single = _aggregate_semantic_score([0.7])
+        multiple = _aggregate_semantic_score([0.7, 0.6, 0.5])
+        # Multiple hits should give a small boost
+        assert multiple >= single
+
+    def test_capped_at_one(self):
+        """分数应限制在 1.0 以内"""
+        score = _aggregate_semantic_score([0.99, 0.95, 0.90])
+        assert score <= 1.0
+
+
+class TestSortBySemantic:
+    """测试语义分数排序"""
+
+    def test_sorts_descending(self):
+        """应按分数降序排列"""
+        items = [
+            NewsItem(title="Low", source_name="Test", semantic_score=0.3),
+            NewsItem(title="High", source_name="Test", semantic_score=0.9),
+            NewsItem(title="Mid", source_name="Test", semantic_score=0.6),
+        ]
+        sorted_items = _sort_by_semantic(items)
+        assert sorted_items[0].title == "High"
+        assert sorted_items[1].title == "Mid"
+        assert sorted_items[2].title == "Low"
+
+    def test_handles_none_scores(self):
+        """应处理 None 分数"""
+        items = [
+            NewsItem(title="Scored", source_name="Test", semantic_score=0.5),
+            NewsItem(title="Unscored", source_name="Test", semantic_score=None),
+        ]
+        sorted_items = _sort_by_semantic(items)
+        assert sorted_items[0].title == "Scored"
+
+    def test_empty_list(self):
+        """空列表应返回空列表"""
+        assert _sort_by_semantic([]) == []
+
+    def test_no_scores(self):
+        """无分数时保持原顺序"""
+        items = [
+            NewsItem(title="A", source_name="Test"),
+            NewsItem(title="B", source_name="Test"),
+        ]
+        sorted_items = _sort_by_semantic(items)
+        assert sorted_items[0].title == "A"
+        assert sorted_items[1].title == "B"
+
+
+class TestHybridFilterStats:
+    """测试过滤统计"""
+
+    def test_stats_dataclass(self):
+        """应正确创建统计数据"""
+        stats = HybridFilterStats(
+            total=100,
+            layer1_dropped=20,
+            layer2_vip_kept=10,
+            layer2_semantic_kept=50,
+            layer2_semantic_dropped=20,
+        )
+        assert stats.total == 100
+        assert stats.layer1_dropped == 20
+        assert stats.layer2_vip_kept == 10
+
+    def test_stats_frozen(self):
+        """统计数据应不可变"""
+        stats = HybridFilterStats(
+            total=100,
+            layer1_dropped=20,
+            layer2_vip_kept=10,
+            layer2_semantic_kept=50,
+            layer2_semantic_dropped=20,
+        )
+        import pytest
+        with pytest.raises(Exception):  # FrozenInstanceError
+            stats.total = 200
+
+
+class TestConfig:
+    """测试配置常量"""
+
+    def test_bio_keywords_exist(self):
+        """应有生物关键词列表"""
+        assert isinstance(GENERAL_BIO_KEYWORDS, (list, tuple))
+        assert len(GENERAL_BIO_KEYWORDS) > 0
+
+    def test_vip_keywords_exist(self):
+        """应有 VIP 关键词列表"""
+        assert isinstance(VIP_KEYWORDS, (list, tuple))
+        assert len(VIP_KEYWORDS) > 0
+
+    def test_semantic_anchors_exist(self):
+        """应有语义锚点"""
+        assert isinstance(SEMANTIC_ANCHORS, (list, tuple))
+
+    def test_threshold_valid(self):
+        """阈值应在有效范围"""
+        assert 0 <= THRESHOLD_NORMAL <= 1
+
+
+class TestModuleExports:
+    """测试模块导出"""
+
+    def test_exports_filter_hybrid(self):
+        """应导出 filter_hybrid"""
+        from src.S4_filter import filter_hybrid
+        assert callable(filter_hybrid)
 
 
 def test_filter():
-    """测试混合过滤功能"""
+    """集成测试"""
     print("=" * 60)
-    print("Step 4: Hybrid Filter 测试")
+    print("Step 4: Hybrid Filter 单元测试")
     print("=" * 60)
 
-    # 加载数据
-    print("\n[1] 加载数据...")
-    items = load_deduped_data()
+    # Test 1: Item text extraction
+    print("\n[1] 测试文本提取...")
+    item = NewsItem(
+        title="Test Title",
+        content="Test Content",
+        source_name="Test",
+    )
+    text = _item_text(item)
+    assert "Test Title" in text
+    assert "Test Content" in text
+    print("    ✓ 文本提取正常")
 
-    if items:
-        print(f"    从 data/deduped 加载了 {len(items)} 条数据")
-    else:
-        print("    未找到实际数据，使用模拟数据")
-        items = create_test_items()
-        print(f"    创建了 {len(items)} 条模拟数据")
+    # Test 2: VIP keywords
+    print("\n[2] 测试 VIP 关键词...")
+    vip_text = "tRNA splicing and RTCB ligase"
+    keywords = _find_vip_keywords(vip_text)
+    print(f"    ✓ 找到 VIP 关键词: {keywords}")
 
-    # 执行过滤
-    print("\n[2] 执行混合过滤...")
-    kept, dropped, stats = filt.filter_hybrid(items, save=False)
+    # Test 3: Semantic score aggregation
+    print("\n[3] 测试语义分数聚合...")
+    single = _aggregate_semantic_score([0.7])
+    multiple = _aggregate_semantic_score([0.7, 0.6, 0.5])
+    assert single == 0.7
+    assert multiple >= single
+    print(f"    ✓ 单分数: {single}, 多分数: {multiple:.4f}")
 
-    print(f"\n[3] 过滤结果:")
-    print(f"    总数: {stats.total}")
-    print(f"    Layer1 丢弃 (非生物): {stats.layer1_dropped}")
-    print(f"    Layer2 VIP 保留: {stats.layer2_vip_kept}")
-    print(f"    Layer2 语义保留: {stats.layer2_semantic_kept}")
-    print(f"    Layer2 语义丢弃: {stats.layer2_semantic_dropped}")
-    print(f"    最终保留: {len(kept)}")
+    # Test 4: Sorting
+    print("\n[4] 测试分数排序...")
+    items = [
+        NewsItem(title="Low", source_name="Test", semantic_score=0.3),
+        NewsItem(title="High", source_name="Test", semantic_score=0.9),
+    ]
+    sorted_items = _sort_by_semantic(items)
+    assert sorted_items[0].semantic_score > sorted_items[1].semantic_score
+    print("    ✓ 排序正常（降序）")
 
-    # 展示保留的文章
-    if kept:
-        print("\n[4] 保留的文章:")
-        for i, item in enumerate(kept[:5], 1):
-            vip_tag = f" [VIP: {', '.join(item.vip_keywords)}]" if item.is_vip else ""
-            sem_score = f" (sem={item.semantic_score:.3f})" if item.semantic_score else ""
-            print(f"    [{i}] {item.title[:45]}...{vip_tag}{sem_score}")
+    # Test 5: Stats
+    print("\n[5] 测试统计数据类...")
+    stats = HybridFilterStats(
+        total=100,
+        layer1_dropped=20,
+        layer2_vip_kept=10,
+        layer2_semantic_kept=50,
+        layer2_semantic_dropped=20,
+    )
+    assert stats.total == 100
+    print(f"    ✓ 统计: total={stats.total}, vip={stats.layer2_vip_kept}")
+
+    # Test 6: Config
+    print("\n[6] 测试配置...")
+    assert len(GENERAL_BIO_KEYWORDS) > 0
+    assert len(VIP_KEYWORDS) > 0
+    assert 0 <= THRESHOLD_NORMAL <= 1
+    print(f"    ✓ 生物关键词: {len(GENERAL_BIO_KEYWORDS)} 个")
+    print(f"    ✓ VIP 关键词: {len(VIP_KEYWORDS)} 个")
+    print(f"    ✓ 阈值: {THRESHOLD_NORMAL}")
 
     print("\n" + "=" * 60)
-    print("✓ Step 4 测试完成")
+    print("✓ Step 4 单元测试完成")
     print("=" * 60)
-
-    return kept, stats
 
 
 if __name__ == "__main__":
     test_filter()
+
+    print("\n运行 pytest...")
+    import pytest
+    pytest.main([__file__, "-v", "--tb=short"])

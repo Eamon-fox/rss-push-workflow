@@ -1,101 +1,317 @@
 #!/usr/bin/env python
-"""Step 3: Dedup - 测试去重功能"""
+"""Step 3: Dedup - 单元测试"""
 
-import importlib
-import json
 import sys
 from pathlib import Path
 
-# 添加项目根目录到路径
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-dedup = importlib.import_module("src.S3_dedup")
 from src.models import NewsItem
+from src.S3_dedup.fingerprint import (
+    normalize_doi,
+    normalize_title,
+    hash_title,
+    get_fingerprint,
+)
+from src.S3_dedup import (
+    filter_duplicates_in_batch,
+    filter_unseen,
+    load,
+    mark_seen,
+    mark_batch,
+    cleanup,
+)
 
 
-def load_cleaned_data() -> list[NewsItem]:
-    """从data/cleaned目录加载最新的清洗后数据"""
-    cleaned_dir = Path("data/cleaned")
-    if not cleaned_dir.exists():
-        return []
+class TestNormalizeDoi:
+    """测试 DOI 标准化"""
 
-    date_dirs = sorted([d for d in cleaned_dir.iterdir() if d.is_dir()], reverse=True)
-    if not date_dirs:
-        return []
+    def test_removes_doi_prefix(self):
+        """应移除 doi: 前缀"""
+        assert normalize_doi("doi:10.1038/xxx") == "10.1038/xxx"
+        assert normalize_doi("DOI:10.1038/xxx") == "10.1038/xxx"
 
-    latest = date_dirs[0] / "all.json"
-    if not latest.exists():
-        return []
+    def test_removes_url_prefix(self):
+        """应移除 URL 前缀"""
+        assert normalize_doi("https://doi.org/10.1038/xxx") == "10.1038/xxx"
+        assert normalize_doi("http://doi.org/10.1038/xxx") == "10.1038/xxx"
 
-    with open(latest, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    def test_lowercases(self):
+        """应转为小写"""
+        assert normalize_doi("10.1038/XXX") == "10.1038/xxx"
 
-    return [NewsItem(**item) for item in data]
+    def test_strips_whitespace(self):
+        """应去除首尾空白"""
+        assert normalize_doi("  10.1038/xxx  ") == "10.1038/xxx"
+
+    def test_empty_input(self):
+        """空输入应返回空字符串"""
+        assert normalize_doi("") == ""
+        assert normalize_doi(None) == ""
 
 
-def create_test_items() -> list[NewsItem]:
-    """创建包含重复项的测试数据"""
-    return [
-        NewsItem(title="Article A", content="Content A", source_name="Source 1"),
-        NewsItem(title="Article B", content="Content B", source_name="Source 1"),
-        NewsItem(title="Article A", content="Content A", source_name="Source 2"),  # 重复
-        NewsItem(title="Article C", content="Content C", source_name="Source 1"),
-        NewsItem(title="article a", content="content a", source_name="Source 3"),  # 大小写重复
-    ]
+class TestNormalizeTitle:
+    """测试标题标准化"""
+
+    def test_lowercases(self):
+        """应转为小写"""
+        assert "hello" in normalize_title("Hello World")
+
+    def test_removes_punctuation(self):
+        """应移除标点"""
+        result = normalize_title("Hello, World!")
+        assert "," not in result
+        assert "!" not in result
+
+    def test_collapses_whitespace(self):
+        """应合并空白"""
+        result = normalize_title("hello   world")
+        assert "  " not in result
+
+    def test_empty_input(self):
+        """空输入应返回空字符串"""
+        assert normalize_title("") == ""
+        assert normalize_title(None) == ""
+
+
+class TestHashTitle:
+    """测试标题哈希"""
+
+    def test_returns_md5(self):
+        """应返回 MD5 哈希"""
+        result = hash_title("Hello World")
+        assert len(result) == 32  # MD5 hex length
+
+    def test_same_title_same_hash(self):
+        """相同标题应返回相同哈希"""
+        h1 = hash_title("Hello World")
+        h2 = hash_title("Hello World")
+        assert h1 == h2
+
+    def test_case_insensitive(self):
+        """大小写不敏感"""
+        h1 = hash_title("Hello World")
+        h2 = hash_title("hello world")
+        assert h1 == h2
+
+    def test_punctuation_insensitive(self):
+        """标点不敏感"""
+        h1 = hash_title("Hello, World!")
+        h2 = hash_title("Hello World")
+        assert h1 == h2
+
+    def test_empty_input(self):
+        """空输入应返回空字符串"""
+        assert hash_title("") == ""
+        assert hash_title(None) == ""
+
+
+class TestGetFingerprint:
+    """测试指纹获取"""
+
+    def test_prefers_doi(self):
+        """有 DOI 时应优先使用 DOI"""
+        item = NewsItem(
+            title="Test Article",
+            doi="10.1038/test",
+            source_name="Test",
+        )
+        fp = get_fingerprint(item)
+        assert fp == "10.1038/test"
+
+    def test_fallback_to_title_hash(self):
+        """无 DOI 时应使用标题哈希"""
+        item = NewsItem(
+            title="Test Article",
+            source_name="Test",
+        )
+        fp = get_fingerprint(item)
+        assert len(fp) == 32  # MD5 hash
+
+    def test_empty_item(self):
+        """空条目应返回空字符串"""
+        item = NewsItem(
+            title="",
+            source_name="Test",
+        )
+        fp = get_fingerprint(item)
+        assert fp == ""
+
+
+class TestFilterDuplicatesInBatch:
+    """测试批次内去重"""
+
+    def test_removes_exact_duplicates(self):
+        """应移除完全重复"""
+        items = [
+            NewsItem(title="Article A", content="Content", source_name="S1"),
+            NewsItem(title="Article B", content="Content", source_name="S1"),
+            NewsItem(title="Article A", content="Content", source_name="S2"),
+        ]
+        result = filter_duplicates_in_batch(items)
+        assert len(result) == 2
+
+    def test_case_insensitive(self):
+        """大小写不敏感"""
+        items = [
+            NewsItem(title="Article A", content="Content", source_name="S1"),
+            NewsItem(title="article a", content="Content", source_name="S2"),
+        ]
+        result = filter_duplicates_in_batch(items)
+        assert len(result) == 1
+
+    def test_empty_list(self):
+        """空列表应返回空列表"""
+        result = filter_duplicates_in_batch([])
+        assert result == []
+
+    def test_no_duplicates(self):
+        """无重复时应保留全部"""
+        items = [
+            NewsItem(title="Article A", content="Content", source_name="S1"),
+            NewsItem(title="Article B", content="Content", source_name="S1"),
+        ]
+        result = filter_duplicates_in_batch(items)
+        assert len(result) == 2
+
+
+class TestFilterUnseen:
+    """测试跨期去重"""
+
+    def test_filters_seen_items(self):
+        """应过滤已见条目"""
+        items = [
+            NewsItem(title="New Article", source_name="Test"),
+            NewsItem(title="Old Article", source_name="Test"),
+        ]
+        # 预先标记一个为已见
+        old_fp = get_fingerprint(items[1])
+        seen = {old_fp: "2024-01-01"}
+
+        new_items, new_fps = filter_unseen(items, seen, save=False)
+        assert len(new_items) == 1
+        assert new_items[0].title == "New Article"
+
+    def test_returns_new_fingerprints(self):
+        """应返回新指纹列表"""
+        items = [
+            NewsItem(title="New Article", source_name="Test"),
+        ]
+        seen = {}
+
+        new_items, new_fps = filter_unseen(items, seen, save=False)
+        assert len(new_fps) == 1
+
+    def test_empty_seen(self):
+        """空历史应全部通过"""
+        items = [
+            NewsItem(title="Article A", source_name="Test"),
+            NewsItem(title="Article B", source_name="Test"),
+        ]
+        new_items, new_fps = filter_unseen(items, {}, save=False)
+        assert len(new_items) == 2
+
+
+class TestSeenRecords:
+    """测试已见记录管理"""
+
+    def test_mark_seen(self):
+        """应标记为已见"""
+        seen = {}
+        mark_seen(seen, "test_fp")
+        assert "test_fp" in seen
+
+    def test_mark_batch(self):
+        """应批量标记"""
+        seen = {}
+        fps = ["fp1", "fp2", "fp3"]
+        mark_batch(seen, fps)
+        assert all(fp in seen for fp in fps)
+
+    def test_cleanup_old_records(self):
+        """应清理过期记录"""
+        from datetime import datetime, timedelta
+
+        seen = {
+            "new_fp": datetime.now().strftime("%Y-%m-%d"),
+            "old_fp": (datetime.now() - timedelta(days=100)).strftime("%Y-%m-%d"),
+        }
+        cleaned = cleanup(seen, max_age_days=30)
+        assert "new_fp" in cleaned
+        assert "old_fp" not in cleaned
+
+
+class TestModuleExports:
+    """测试模块导出"""
+
+    def test_exports_get_fingerprint(self):
+        """应导出 get_fingerprint"""
+        from src.S3_dedup import get_fingerprint
+        assert callable(get_fingerprint)
+
+    def test_exports_filter_functions(self):
+        """应导出过滤函数"""
+        from src.S3_dedup import filter_unseen, filter_duplicates_in_batch
+        assert callable(filter_unseen)
+        assert callable(filter_duplicates_in_batch)
 
 
 def test_dedup():
-    """测试去重功能"""
+    """集成测试"""
     print("=" * 60)
-    print("Step 3: Dedup 测试")
+    print("Step 3: Dedup 单元测试")
     print("=" * 60)
 
-    # 加载数据
-    print("\n[1] 加载数据...")
-    items = load_cleaned_data()
+    # Test 1: DOI normalization
+    print("\n[1] 测试 DOI 标准化...")
+    assert normalize_doi("doi:10.1038/XXX") == "10.1038/xxx"
+    assert normalize_doi("https://doi.org/10.1038/test") == "10.1038/test"
+    print("    ✓ DOI 标准化正常")
 
-    if items:
-        print(f"    从 data/cleaned 加载了 {len(items)} 条数据")
-    else:
-        print("    未找到实际数据，使用模拟数据")
-        items = create_test_items()
-        print(f"    创建了 {len(items)} 条模拟数据 (包含重复)")
+    # Test 2: Title hashing
+    print("\n[2] 测试标题哈希...")
+    h1 = hash_title("Hello, World!")
+    h2 = hash_title("hello world")
+    assert h1 == h2
+    print(f"    ✓ 标题哈希: {h1[:16]}...")
 
-    # 加载历史记录
-    print("\n[2] 加载去重历史...")
-    seen_records = dedup.load()
-    print(f"    历史记录: {len(seen_records)} 条")
+    # Test 3: Fingerprint
+    print("\n[3] 测试指纹计算...")
+    item_with_doi = NewsItem(title="Test", doi="10.1038/test", source_name="Test")
+    item_no_doi = NewsItem(title="Test Article", source_name="Test")
+    fp1 = get_fingerprint(item_with_doi)
+    fp2 = get_fingerprint(item_no_doi)
+    assert fp1 == "10.1038/test"
+    assert len(fp2) == 32
+    print(f"    ✓ DOI 指纹: {fp1}")
+    print(f"    ✓ 标题指纹: {fp2[:16]}...")
 
-    # 批次内去重
-    print("\n[3] 批次内去重...")
-    before_batch = len(items)
-    items = dedup.filter_duplicates_in_batch(items)
-    after_batch = len(items)
-    print(f"    {before_batch} -> {after_batch} (移除 {before_batch - after_batch} 条批次内重复)")
+    # Test 4: Batch dedup
+    print("\n[4] 测试批次内去重...")
+    items = [
+        NewsItem(title="Article A", source_name="S1"),
+        NewsItem(title="Article B", source_name="S1"),
+        NewsItem(title="Article A", source_name="S2"),
+        NewsItem(title="article a", source_name="S3"),
+    ]
+    result = filter_duplicates_in_batch(items)
+    assert len(result) == 2
+    print(f"    ✓ {len(items)} 条去重后剩 {len(result)} 条")
 
-    # 跨期去重
-    print("\n[4] 跨期去重...")
-    new_items, new_fps = dedup.filter_unseen(items, seen_records, save=True)
-    print(f"    {len(items)} -> {len(new_items)} (移除 {len(items) - len(new_items)} 条历史重复)")
-    print(f"    新增指纹: {len(new_fps)} 条")
-
-    # 展示结果
-    if new_items:
-        print("\n    去重后前3条:")
-        for i, item in enumerate(new_items[:3], 1):
-            fp = dedup.get_fingerprint(item)
-            print(f"    [{i}] {item.title[:40]}...")
-            print(f"        指纹: {fp[:16]}...")
-
-    # 注意: 这里不保存seen_records，因为是测试
-    print("\n    (测试模式: 不更新seen.json)")
+    # Test 5: Cross-period dedup
+    print("\n[5] 测试跨期去重...")
+    seen = {get_fingerprint(items[0]): "2024-01-01"}
+    new_items, new_fps = filter_unseen(result, seen, save=False)
+    print(f"    ✓ {len(result)} 条过滤后剩 {len(new_items)} 条新条目")
 
     print("\n" + "=" * 60)
-    print("✓ Step 3 测试完成")
+    print("✓ Step 3 单元测试完成")
     print("=" * 60)
-
-    return new_items, new_fps
 
 
 if __name__ == "__main__":
     test_dedup()
+
+    print("\n运行 pytest...")
+    import pytest
+    pytest.main([__file__, "-v", "--tb=short"])

@@ -1,98 +1,279 @@
 #!/usr/bin/env python
-"""Step 2: Clean - 测试内容清洗功能"""
+"""Step 2: Clean - 单元测试"""
 
-import importlib
-import json
 import sys
-from datetime import datetime
 from pathlib import Path
 
-# 添加项目根目录到路径
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-clean = importlib.import_module("src.S2_clean")
 from src.models import NewsItem
+from src.S2_clean.html import (
+    clean_html,
+    clean_whitespace,
+    truncate,
+    clean_text,
+    clean,
+    batch_clean,
+)
 
 
-def load_raw_data() -> list[NewsItem]:
-    """从data/raw目录加载最新的原始数据"""
-    raw_dir = Path("data/raw")
-    if not raw_dir.exists():
-        return []
+class TestCleanHtml:
+    """测试 HTML 清理"""
 
-    # 找最新日期的目录
-    date_dirs = sorted([d for d in raw_dir.iterdir() if d.is_dir()], reverse=True)
-    if not date_dirs:
-        return []
+    def test_removes_tags(self):
+        """应移除 HTML 标签"""
+        result = clean_html("<p>Hello <b>World</b></p>")
+        assert "<" not in result
+        assert ">" not in result
+        assert "Hello" in result
+        assert "World" in result
 
-    latest = date_dirs[0] / "all.json"
-    if not latest.exists():
-        return []
+    def test_decodes_entities(self):
+        """应解码 HTML 实体"""
+        assert clean_html("&amp;") == "&"
+        assert clean_html("&lt;") == "<"
+        assert clean_html("&gt;") == ">"
+        assert clean_html("&nbsp;") == "\xa0"  # non-breaking space
+        assert clean_html("&quot;") == '"'
 
-    with open(latest, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    def test_empty_input(self):
+        """空输入应返回空字符串"""
+        assert clean_html("") == ""
+        assert clean_html(None) == ""
 
-    return [NewsItem(**item) for item in data]
+    def test_preserves_text(self):
+        """应保留纯文本"""
+        text = "Hello World"
+        assert clean_html(text) == text
 
 
-def create_test_items() -> list[NewsItem]:
-    """创建测试数据"""
-    return [
-        NewsItem(
-            title="  <b>Test Article</b> with &amp; HTML entities  ",
-            content="<p>This is a <strong>test</strong> paragraph.</p>\n\n\n  Multiple   spaces here.",
-            link="  https://example.com/article1  ",
-            source_name="Test Source",
-        ),
-        NewsItem(
-            title="Normal Title",
-            content="A" * 3000,  # 超长内容，应该被截断
-            link="https://example.com/article2",
-            source_name="Test Source",
-        ),
-    ]
+class TestCleanWhitespace:
+    """测试空白符清理"""
+
+    def test_collapses_spaces(self):
+        """应合并多个空格"""
+        assert clean_whitespace("hello   world") == "hello world"
+
+    def test_strips_edges(self):
+        """应去除首尾空白"""
+        assert clean_whitespace("  hello  ") == "hello"
+
+    def test_handles_newlines(self):
+        """应处理换行符"""
+        assert clean_whitespace("hello\n\nworld") == "hello world"
+
+    def test_handles_tabs(self):
+        """应处理制表符"""
+        assert clean_whitespace("hello\t\tworld") == "hello world"
+
+    def test_empty_input(self):
+        """空输入应返回空字符串"""
+        assert clean_whitespace("") == ""
+        assert clean_whitespace(None) == ""
+
+
+class TestTruncate:
+    """测试文本截断"""
+
+    def test_short_text_unchanged(self):
+        """短文本不应被截断"""
+        text = "Hello World"
+        assert truncate(text, max_length=100) == text
+
+    def test_long_text_truncated(self):
+        """长文本应被截断"""
+        text = "x" * 100
+        result = truncate(text, max_length=50)
+        assert len(result) <= 53  # 50 + "..."
+
+    def test_adds_ellipsis(self):
+        """截断后应添加省略号"""
+        text = "x" * 100
+        result = truncate(text, max_length=50)
+        assert result.endswith("...")
+
+    def test_empty_input(self):
+        """空输入应返回空字符串"""
+        assert truncate("", max_length=100) == ""
+        assert truncate(None, max_length=100) is None
+
+    def test_exact_length(self):
+        """刚好等于限制长度不截断"""
+        text = "x" * 50
+        result = truncate(text, max_length=50)
+        assert result == text
+        assert "..." not in result
+
+
+class TestCleanText:
+    """测试完整清理流程"""
+
+    def test_full_pipeline(self):
+        """应执行完整清理流程"""
+        text = "<p>  Hello   <b>World</b> &amp; More  </p>"
+        result = clean_text(text, max_length=100)
+
+        assert "<" not in result
+        assert ">" not in result
+        assert "Hello" in result
+        assert "World" in result
+        assert "&" in result
+        assert "  " not in result  # no double spaces
+
+    def test_truncates_after_cleaning(self):
+        """应在清理后截断"""
+        text = "<p>" + "x" * 3000 + "</p>"
+        result = clean_text(text, max_length=100)
+        assert len(result) <= 103
+
+
+class TestCleanItem:
+    """测试 NewsItem 清理"""
+
+    def test_cleans_title(self):
+        """应清理标题空白"""
+        item = NewsItem(
+            title="  Test Title  ",
+            content="Content",
+            source_name="Test",
+        )
+        result = clean(item)
+        assert result.title == "Test Title"  # clean() 只处理空白，不处理 HTML
+
+    def test_cleans_content(self):
+        """应清理内容"""
+        item = NewsItem(
+            title="Title",
+            content="<p>Test &amp; Content</p>",
+            source_name="Test",
+        )
+        result = clean(item)
+        assert "<p>" not in result.content
+        assert "&" in result.content
+
+    def test_strips_link(self):
+        """应去除链接首尾空白"""
+        item = NewsItem(
+            title="Title",
+            content="Content",
+            link="  https://example.com  ",
+            source_name="Test",
+        )
+        result = clean(item)
+        assert result.link == "https://example.com"
+
+    def test_preserves_metadata(self):
+        """应保留元数据"""
+        item = NewsItem(
+            title="Title",
+            content="Content",
+            source_name="Nature",
+            authors=["Author A", "Author B"],
+            doi="10.1234/test",
+        )
+        result = clean(item)
+        assert result.source_name == "Nature"
+        assert result.authors == ["Author A", "Author B"]
+        assert result.doi == "10.1234/test"
+
+
+class TestBatchClean:
+    """测试批量清理"""
+
+    def test_cleans_all_items(self):
+        """应清理所有条目"""
+        items = [
+            NewsItem(title="  Title 1  ", content="Content 1", source_name="Test"),
+            NewsItem(title="  Title 2  ", content="Content 2", source_name="Test"),
+        ]
+        results = batch_clean(items, save=False)
+
+        assert len(results) == 2
+        assert results[0].title == "Title 1"
+        assert results[1].title == "Title 2"
+
+    def test_empty_list(self):
+        """空列表应返回空列表"""
+        results = batch_clean([], save=False)
+        assert results == []
+
+
+class TestModuleExports:
+    """测试模块导出"""
+
+    def test_exports_clean(self):
+        """应导出 clean 函数"""
+        from src.S2_clean import clean
+        assert callable(clean)
+
+    def test_exports_batch_clean(self):
+        """应导出 batch_clean 函数"""
+        from src.S2_clean import batch_clean
+        assert callable(batch_clean)
 
 
 def test_clean():
-    """测试内容清洗"""
+    """集成测试"""
     print("=" * 60)
-    print("Step 2: Clean 测试")
+    print("Step 2: Clean 单元测试")
     print("=" * 60)
 
-    # 尝试从实际数据加载
-    print("\n[1] 加载测试数据...")
-    items = load_raw_data()
+    # Test 1: HTML cleaning
+    print("\n[1] 测试 HTML 清理...")
+    html_input = "<p>Hello &amp; <b>World</b></p>"
+    result = clean_html(html_input)
+    assert "Hello" in result
+    assert "&" in result
+    assert "<" not in result
+    print(f"    ✓ '{html_input}' -> '{result}'")
 
-    if items:
-        print(f"    从 data/raw 加载了 {len(items)} 条数据")
-    else:
-        print("    未找到实际数据，使用模拟数据")
-        items = create_test_items()
-        print(f"    创建了 {len(items)} 条模拟数据")
+    # Test 2: Whitespace
+    print("\n[2] 测试空白符清理...")
+    ws_input = "  hello   world  "
+    result = clean_whitespace(ws_input)
+    assert result == "hello world"
+    print(f"    ✓ '{ws_input}' -> '{result}'")
 
-    # 执行清洗
-    print("\n[2] 执行清洗...")
-    cleaned_items = clean.batch_clean(items, save=True)
+    # Test 3: Truncate
+    print("\n[3] 测试截断...")
+    long_text = "x" * 100
+    result = truncate(long_text, max_length=50)
+    assert len(result) <= 53
+    print(f"    ✓ 100字符截断到 {len(result)} 字符")
 
-    # 结果对比
-    print(f"\n[3] 清洗结果: {len(cleaned_items)} 条")
+    # Test 4: Item cleaning
+    print("\n[4] 测试 NewsItem 清理...")
+    item = NewsItem(
+        title="  Test Title  ",
+        content="<p>Content with  spaces</p>",
+        link="  https://example.com  ",
+        source_name="Test",
+    )
+    cleaned = clean(item)
+    assert cleaned.title == "Test Title"  # 空白已清理
+    assert "<p>" not in cleaned.content  # HTML 已清理
+    assert cleaned.link == "https://example.com"
+    print("    ✓ NewsItem 清理正常")
 
-    if cleaned_items:
-        print("\n    清洗效果示例 (前2条):")
-        for i, (orig, cln) in enumerate(zip(items[:2], cleaned_items[:2]), 1):
-            print(f"\n    [{i}] 标题清洗:")
-            print(f"        前: {repr(orig.title[:50])}")
-            print(f"        后: {repr(cln.title[:50])}")
-
-            if orig.content:
-                print(f"        内容长度: {len(orig.content)} -> {len(cln.content)}")
+    # Test 5: Batch
+    print("\n[5] 测试批量清理...")
+    items = [
+        NewsItem(title=f"  Title {i}  ", content=f"Content {i}", source_name="Test")
+        for i in range(3)
+    ]
+    results = batch_clean(items, save=False)
+    assert len(results) == 3
+    assert all(r.title.startswith("Title") for r in results)
+    print(f"    ✓ 批量清理 {len(results)} 条")
 
     print("\n" + "=" * 60)
-    print("✓ Step 2 测试完成")
+    print("✓ Step 2 单元测试完成")
     print("=" * 60)
-
-    return cleaned_items
 
 
 if __name__ == "__main__":
     test_clean()
+
+    print("\n运行 pytest...")
+    import pytest
+    pytest.main([__file__, "-v", "--tb=short"])

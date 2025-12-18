@@ -224,6 +224,7 @@ def _efetch(pmids: Iterable[str], *, source_name: str, term: str, eutils: _Eutil
         authors = _extract_authors(art)
         doi = _extract_doi(article)
         published_at = _extract_published_at(article)
+        journal_name = _extract_journal_name(art)
 
         items.append(
             NewsItem(
@@ -235,6 +236,7 @@ def _efetch(pmids: Iterable[str], *, source_name: str, term: str, eutils: _Eutil
                 source_name=source_name,
                 source_url=search_url,
                 published_at=published_at,
+                journal_name=journal_name,
             )
         )
 
@@ -279,6 +281,21 @@ def _extract_authors(article_elem: ET.Element | None) -> list[str]:
         elif last:
             authors.append(last)
     return authors
+
+
+def _extract_journal_name(article_elem: ET.Element | None) -> str:
+    """Extract journal name from Article element."""
+    if article_elem is None:
+        return ""
+    # Prefer ISO abbreviation (e.g., "Nature", "Cell") over full title
+    iso_abbrev = article_elem.findtext("./Journal/ISOAbbreviation")
+    if iso_abbrev and iso_abbrev.strip():
+        return iso_abbrev.strip()
+    # Fallback to full title
+    full_title = article_elem.findtext("./Journal/Title")
+    if full_title and full_title.strip():
+        return full_title.strip()
+    return ""
 
 
 def _extract_doi(article: ET.Element) -> str:
