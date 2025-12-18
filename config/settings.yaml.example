@@ -1,0 +1,56 @@
+# ScholarPipe Configuration
+
+# 微信小程序配置
+wechat:
+  appid: YOUR_WECHAT_APPID
+  secret: YOUR_WECHAT_SECRET
+
+llm:
+  provider: mimo  # ollama (local), zhipu (cloud), siliconflow (cloud), or mimo (cloud)
+  # Ollama settings (local)
+  ollama:
+    base_url: http://localhost:11434
+    model: qwen3:8b
+    concurrency: 1      # local GPU limited
+  # Zhipu settings (cloud)
+  zhipu:
+    model: glm-4.6       # or glm-4.5-air
+    allow_thinking: false
+    concurrency: 5       # cloud API can handle more
+  # SiliconFlow settings (cloud)
+  siliconflow:
+    model: Qwen/Qwen3-8B
+    enable_thinking: true  # 启用推理模式，提升摘要质量
+    concurrency: 5
+  # MiMo settings (cloud)
+  mimo:
+    model: mimo-v2-flash
+    enable_thinking: false  # 启用推理模式
+    concurrency: 5
+
+semantic:
+  # Model presets: "dev" (local CPU), "prod" (local GPU), "api" (cloud API), "custom"
+  preset: api  # dev | prod | api | custom
+
+  # Embedding cache (reduces redundant model calls)
+  cache_enabled: true  # Cache embeddings in data/embedding_cache.db
+
+  # Preset configurations:
+  # - dev: all-MiniLM-L6-v2 (~80MB, CPU, fast for testing, 384 dim)
+  # - prod: BAAI/bge-m3 (~2GB, GPU required, best quality, 1024 dim)
+  # - api: DashScope text-embedding-v4 (cloud, no local GPU needed, 1024 dim)
+
+  # API settings (only used when preset: api)
+  api:
+    provider: dashscope  # dashscope | siliconflow
+    model: text-embedding-v4
+    dimension: 1024  # 512 | 1024 | 2048
+    concurrency: 4
+
+  # Custom model settings (only used when preset: custom)
+  custom:
+    model_id: sentence-transformers/all-MiniLM-L6-v2
+    device: cpu  # cpu | cuda
+
+  batch_size: 16
+  local_files_only: true  # Set true if models pre-downloaded

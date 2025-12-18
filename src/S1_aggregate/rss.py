@@ -4,7 +4,7 @@ import json
 import httpx
 import feedparser
 from email.utils import parsedate_to_datetime
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from ..models import NewsItem
@@ -15,6 +15,41 @@ HEADERS = {
 }
 
 RAW_DIR = Path("data/raw")
+CACHE_MAX_AGE_HOURS = 5  # 缓存有效期（小时）
+
+
+def _get_cache_path(source_name: str) -> Path:
+    """Get cache file path for source."""
+    today = datetime.now().strftime("%Y-%m-%d")
+    filename = source_name.lower().replace(" ", "_") + ".json"
+    return RAW_DIR / today / filename
+
+
+def _check_cache(source_name: str, max_age_hours: float = CACHE_MAX_AGE_HOURS) -> list[NewsItem] | None:
+    """
+    Check if valid cache exists.
+
+    Returns:
+        List of NewsItem if cache is valid, None otherwise
+    """
+    cache_path = _get_cache_path(source_name)
+    if not cache_path.exists():
+        return None
+
+    # Check file age
+    mtime = datetime.fromtimestamp(cache_path.stat().st_mtime)
+    age = datetime.now() - mtime
+    if age > timedelta(hours=max_age_hours):
+        return None
+
+    # Load cache
+    try:
+        with open(cache_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        items = [NewsItem(**item) for item in data]
+        return items
+    except Exception:
+        return None
 
 
 def fetch(source: dict, save_raw: bool = True) -> list[NewsItem]:
@@ -30,6 +65,15 @@ def fetch(source: dict, save_raw: bool = True) -> list[NewsItem]:
     """
     url = source["url"]
     name = source["name"]
+
+    # Check cache first
+    cached = _check_cache(name)
+    if cached is not None:
+        age_path = _get_cache_path(name)
+        mtime = datetime.fromtimestamp(age_path.stat().st_mtime)
+        age_min = (datetime.now() - mtime).total_seconds() / 60
+        print(f"  [{name}] Cache hit ({len(cached)} items, {age_min:.0f}min ago)")
+        return cached
 
     # Fetch
     try:
@@ -78,6 +122,8 @@ def _generic_parse(entries: list, source_name: str, source_url: str) -> list[New
     items = []
     for entry in entries:
         published_at = _extract_published_at(entry)
+        # 优先使用 prism_publicationname，否则用 source_name
+        journal = entry.get("prism_publicationname", "").strip() or source_name
         items.append(NewsItem(
             title=entry.get("title", ""),
             content=_extract_content(entry),
@@ -85,6 +131,7 @@ def _generic_parse(entries: list, source_name: str, source_url: str) -> list[New
             source_name=source_name,
             source_url=source_url,
             published_at=published_at,
+            journal_name=journal,
         ))
     return items
 

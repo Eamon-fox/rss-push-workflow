@@ -15,7 +15,6 @@ __all__ = ["fetch_all", "load_sources"]
 
 SOURCES_FILE = Path(__file__).parent / "sources.yaml"
 RAW_DIR = Path("data/raw")
-DEFAULT_MAX_WORKERS = 4
 
 
 def load_sources() -> list[dict]:
@@ -78,9 +77,9 @@ def fetch_all(sources: list[dict] | None = None, save_raw: bool = True) -> list:
 def _resolve_max_workers(total_sources: int) -> int:
     env_value = os.environ.get("AGGREGATE_MAX_WORKERS")
     try:
-        configured = int(env_value) if env_value else DEFAULT_MAX_WORKERS
+        configured = int(env_value) if env_value else total_sources  # 默认全并发
     except ValueError:
-        configured = DEFAULT_MAX_WORKERS
+        configured = total_sources
     configured = max(1, configured)
     return min(configured, total_sources)
 

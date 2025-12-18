@@ -8,7 +8,7 @@ import time
 import urllib.parse
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Iterable
 
@@ -17,6 +17,7 @@ import httpx
 from ..models import NewsItem
 
 RAW_DIR = Path("data/raw")
+CACHE_MAX_AGE_HOURS = 5  # 缓存有效期（小时）
 
 
 @dataclass(frozen=True)
@@ -32,6 +33,40 @@ def default_eutils_config() -> _EutilsConfig:
         api_key=_get_env("NCBI_API_KEY"),
         tool="scholarpipe",
     )
+
+
+def _get_cache_path(source_name: str) -> Path:
+    """Get cache file path for source."""
+    today = datetime.now().strftime("%Y-%m-%d")
+    filename = _sanitize_filename(source_name) + ".json"
+    return RAW_DIR / today / filename
+
+
+def _check_cache(source_name: str, max_age_hours: float = CACHE_MAX_AGE_HOURS) -> list[NewsItem] | None:
+    """
+    Check if valid cache exists.
+
+    Returns:
+        List of NewsItem if cache is valid, None otherwise
+    """
+    cache_path = _get_cache_path(source_name)
+    if not cache_path.exists():
+        return None
+
+    # Check file age
+    mtime = datetime.fromtimestamp(cache_path.stat().st_mtime)
+    age = datetime.now() - mtime
+    if age > timedelta(hours=max_age_hours):
+        return None
+
+    # Load cache
+    try:
+        with open(cache_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        items = [NewsItem(**item) for item in data]
+        return items
+    except Exception:
+        return None
 
 
 def fetch(source: dict, save_raw: bool = True) -> list[NewsItem]:
@@ -51,6 +86,15 @@ def fetch(source: dict, save_raw: bool = True) -> list[NewsItem]:
     name = source["name"]
     term = source["term"]
     retmax = int(source.get("retmax", 50))
+
+    # Check cache first
+    cached = _check_cache(name)
+    if cached is not None:
+        cache_path = _get_cache_path(name)
+        mtime = datetime.fromtimestamp(cache_path.stat().st_mtime)
+        age_min = (datetime.now() - mtime).total_seconds() / 60
+        print(f"  [{name}] Cache hit ({len(cached)} items, {age_min:.0f}min ago)")
+        return cached
 
     eutils = _EutilsConfig(
         email=source.get("email") or _get_env("NCBI_EMAIL"),

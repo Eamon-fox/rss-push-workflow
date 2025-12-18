@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import logging
 import re
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -11,6 +12,8 @@ from pathlib import Path
 from threading import Lock
 
 import yaml
+
+logger = logging.getLogger(__name__)
 
 from ..models import NewsItem
 from ..infra import chat, get_concurrency
@@ -345,7 +348,7 @@ def summarize_batch(
     def process_item(idx: int, item: NewsItem) -> tuple[int, NewsItem]:
         return idx, summarize_single(item, user_context, use_cache=use_cache)
 
-    print(f"      Summarizing {total} items (concurrency={concurrency}, cache={'on' if use_cache else 'off'})...")
+    logger.info(f"Summarizing {total} items (concurrency={concurrency}, cache={'on' if use_cache else 'off'})")
 
     with ThreadPoolExecutor(max_workers=concurrency) as executor:
         futures = {
@@ -371,7 +374,7 @@ def summarize_batch(
                 # Progress update every N items (N=concurrency) or at the end
                 if completed % concurrency == 0 or completed == total:
                     cache_info = f", cached={cached}" if cached > 0 else ""
-                    print(f"      [{completed}/{total}] done (success={success}, failed={failed}{cache_info})")
+                    logger.info(f"LLM progress: [{completed}/{total}] done (success={success}, failed={failed}{cache_info})")
 
     stats = SummarizeStats(total=total, success=success, failed=failed, retried=retried, cached=cached)
     return items, stats

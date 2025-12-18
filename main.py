@@ -2,10 +2,59 @@
 
 import argparse
 import importlib
+import json
 import logging
 import sys
 from datetime import datetime
 from pathlib import Path
+
+
+# ─────────────────────────────────────────────────────────────
+# Progress tracking
+# ─────────────────────────────────────────────────────────────
+
+PROGRESS_FILE = Path("data/pipeline_progress.json")
+
+STEPS = [
+    {"step": 1, "name": "Aggregate", "desc": "抓取 RSS/PubMed"},
+    {"step": 2, "name": "Clean", "desc": "HTML 清洗"},
+    {"step": 3, "name": "Dedup", "desc": "去重"},
+    {"step": 4, "name": "Enrich", "desc": "补充摘要"},
+    {"step": 5, "name": "Filter", "desc": "语义过滤"},
+    {"step": 6, "name": "LLM", "desc": "生成摘要"},
+    {"step": 7, "name": "Deliver", "desc": "输出结果"},
+]
+
+
+def update_progress(
+    step: int,
+    status: str = "running",
+    input_count: int = 0,
+    output_count: int = 0,
+    detail: str = "",
+):
+    """Update progress file for API to read."""
+    step_info = STEPS[step - 1] if 1 <= step <= len(STEPS) else {}
+    progress = {
+        "current_step": step,
+        "total_steps": len(STEPS),
+        "step_name": step_info.get("name", ""),
+        "step_desc": step_info.get("desc", ""),
+        "status": status,  # running, completed, failed
+        "updated_at": datetime.now().isoformat(),
+        "input_count": input_count,
+        "output_count": output_count,
+        "detail": detail,
+    }
+    PROGRESS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with open(PROGRESS_FILE, "w", encoding="utf-8") as f:
+        json.dump(progress, f, ensure_ascii=False)
+
+
+def clear_progress():
+    """Clear progress file when pipeline completes."""
+    if PROGRESS_FILE.exists():
+        PROGRESS_FILE.unlink()
 
 
 # ─────────────────────────────────────────────────────────────
@@ -194,6 +243,7 @@ def run(args=None):
     # ─────────────────────────────────────────────────────────
     # Step 1: Aggregate
     # ─────────────────────────────────────────────────────────
+    update_progress(1, "running")
     print_step(1, 7, "Aggregate (fetch RSS/PubMed)")
 
     if args.skip_fetch:
@@ -230,22 +280,27 @@ def run(args=None):
         print_table(["Source", "Count"], rows)
 
     print_step_end(total, total)
+    update_progress(1, "completed", output_count=total)
 
     if not items:
         print("No items found.")
+        clear_progress()
         return
 
     # ─────────────────────────────────────────────────────────
     # Step 2: Clean
     # ─────────────────────────────────────────────────────────
+    update_progress(2, "running", input_count=total)
     print_step(2, 7, "Clean (HTML sanitize)")
     before_clean = len(items)
     items = clean.batch_clean(items)
     print_step_end(before_clean, len(items))
+    update_progress(2, "completed", input_count=before_clean, output_count=len(items))
 
     # ─────────────────────────────────────────────────────────
     # Step 3: Dedup
     # ─────────────────────────────────────────────────────────
+    update_progress(3, "running", input_count=len(items))
     print_step(3, 7, "Dedup (fingerprint check)")
     before_dedup = len(items)
     items = dedup.filter_duplicates_in_batch(items)
@@ -257,25 +312,30 @@ def run(args=None):
     print_detail("Previously seen removed", after_batch_dedup - after_dedup)
     print_detail("New items", after_dedup)
     print_step_end(before_dedup, after_dedup)
+    update_progress(3, "completed", input_count=before_dedup, output_count=after_dedup)
 
     if not items:
         print("No new items.")
         dedup.save(seen_records)
+        clear_progress()
         return
 
     # ─────────────────────────────────────────────────────────
     # Step 4: Enrich (补充完整摘要，在语义过滤前执行)
     # ─────────────────────────────────────────────────────────
+    update_progress(4, "running", input_count=len(items))
     print_step(4, 7, "Enrich (fetch full abstracts)")
     before_enrich = len(items)
     items, enrich_stats = enrich.enrich_batch(items, min_content_len=150)
     print_detail("Need enrichment", enrich_stats.need_enrich)
     print_detail("Successfully enriched", enrich_stats.enriched)
     print_step_end(before_enrich, len(items))
+    update_progress(4, "completed", input_count=before_enrich, output_count=len(items))
 
     # ─────────────────────────────────────────────────────────
     # Step 5: Hybrid Filter (用完整摘要做语义过滤)
     # ─────────────────────────────────────────────────────────
+    update_progress(5, "running", input_count=len(items))
     print_step(5, 7, "Hybrid Filter (keyword + semantic)")
     before_filter = len(items)
     items, dropped_items, stats = filt.filter_hybrid(
@@ -291,12 +351,14 @@ def run(args=None):
         print_detail("Final scores", f"avg={stats.avg_final_score:.3f}, min={stats.min_final_score:.3f}, max={stats.max_final_score:.3f}")
 
     print_step_end(before_filter, after_filter)
+    update_progress(5, "completed", input_count=before_filter, output_count=after_filter)
 
     if not items:
         print("No items after filtering.")
         dedup.mark_batch(seen_records, new_fps)
         seen_records = dedup.cleanup(seen_records)
         dedup.save(seen_records)
+        clear_progress()
         return
 
     # ─────────────────────────────────────────────────────────
@@ -310,7 +372,9 @@ def run(args=None):
     # ─────────────────────────────────────────────────────────
     # Step 6: LLM Summarize (生成中文摘要)
     # ─────────────────────────────────────────────────────────
+    update_progress(6, "running", input_count=len(items))
     print_step(6, 7, "LLM Summarize (generate Chinese summaries)")
+    logger.info(f"Step 6: LLM Summarize starting with {len(items)} items")
     before_llm = len(items)
 
     if args.no_llm:
@@ -339,6 +403,9 @@ def run(args=None):
             print_detail("Failed", llm_stats.failed)
 
     print_step_end(before_llm, len(items))
+    update_progress(6, "completed", input_count=before_llm, output_count=len(items))
+    if llm_stats:
+        logger.info(f"Step 6: LLM completed - {llm_stats.success}/{llm_stats.total} summarized, {llm_stats.cached} cached")
 
     # Sort by semantic score (already computed in Step 5)
     results = sort_results(items)
@@ -346,7 +413,9 @@ def run(args=None):
     # ─────────────────────────────────────────────────────────
     # Step 7: Deliver
     # ─────────────────────────────────────────────────────────
+    update_progress(7, "running", input_count=len(results))
     print_step(7, 7, "Deliver (output results)")
+    logger.info(f"Step 7: Deliver starting with {len(results)} items")
 
     # Save outputs
     deliver.to_json(results, args.output)
@@ -375,7 +444,34 @@ def run(args=None):
     dedup.save(seen_records)
     print_detail("Dedup history", "updated")
 
+    # Archive daily report
+    from src.archive import archive_daily
+    archive_stats = {
+        "total": total,
+        "after_dedup": after_dedup,
+        "after_filter": after_filter,
+    }
+    archive_info = archive_daily(results, archive_stats)
+    print_detail("Archived", f"v{archive_info['version']} -> output/archive/")
+    logger.info(f"Archived v{archive_info['version']} with {len(results)} articles")
+
+    # Clean up intermediate data and old raw cache
+    try:
+        from src.cleanup import cleanup_intermediate_data, cleanup_old_raw_data
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        cleanup_stats = cleanup_intermediate_data(date=today_str)
+        raw_cleanup_stats = cleanup_old_raw_data()
+        total_cleaned = cleanup_stats['dirs_removed'] + raw_cleanup_stats['dirs_removed']
+        print_detail("Cleanup", f"{total_cleaned} dirs removed")
+        logger.info(f"Cleanup completed: {total_cleaned} dirs removed")
+    except Exception as e:
+        logger.warning(f"Cleanup failed (non-critical): {e}")
+        print_detail("Cleanup", "skipped due to error")
+
     print_step_end(len(results), len(results))
+    update_progress(7, "completed", input_count=len(results), output_count=len(results))
+    clear_progress()
+    logger.info("Step 7: Deliver completed")
 
     # Final Summary
     print("=" * 62)

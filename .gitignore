@@ -42,8 +42,15 @@ logs/*.log
 
 # Config with secrets
 config/secrets.yaml
+config/settings.yaml
 .env
 .env.local
+
+# Keep template
+!config/settings.yaml.example
+
+# Deployment specific
+*.service
 
 # OS
 .DS_Store

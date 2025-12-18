@@ -37,6 +37,12 @@ class BaseParser(ABC):
                 image_url = self._extract_image_url(entry)
                 if image_url and not item.image_url:
                     item = item.model_copy(update={"image_url": image_url})
+                # 补充journal_name: prism_publicationname > source_name
+                if not item.journal_name:
+                    journal = entry.get("prism_publicationname", "").strip()
+                    if not journal:
+                        journal = self.source_name
+                    item = item.model_copy(update={"journal_name": journal})
                 if item and item.title:
                     items.append(item)
             except Exception as e:
