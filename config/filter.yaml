@@ -1,95 +1,106 @@
-# 第4步混合过滤配置
-
-# ============================================================
-# 评分参数
-# ============================================================
+# 混合过滤配置
 
 # 最终过滤阈值
 final_threshold: 0.50
 
-# Anchor tier multipliers (命中哪个层级的anchor)
+# Anchor tier multipliers
 anchor_tier_multiplier:
-  tier1: 1.20  # 核心研究方向
-  tier2: 1.10  # 密切相关
-  tier3: 1.00  # 扩展兴趣
+  tier1: 1.20
+  tier2: 1.10
+  tier3: 1.00
 
-# Anchor coverage bonus (跨层级覆盖奖励)
+# Anchor coverage bonus
 anchor_coverage:
-  threshold: 0.40  # 判定"命中"的相似度阈值
+  threshold: 0.40
   bonus:
-    tier1: 0.12  # 命中tier1 anchor的coverage bonus
+    tier1: 0.12
     tier2: 0.06
     tier3: 0.03
 
-# Negative anchor settings (负向锚点惩罚)
-# 匹配临床/农业/纯计算/综述类内容时降权
+# Negative anchor penalty
 negative_anchor:
-  threshold: 0.38  # 触发惩罚的相似度阈值 (降低以提高命中率)
-  penalty: 0.60    # 惩罚乘数 (0.6 = 降低40%分数)
+  threshold: 0.38
+  penalty: 0.60
 
 # ============================================================
-# VIP关键词 (分层)
+# Tiered Scoring (分层加权打分)
+# ============================================================
+tiered_scoring:
+  # 每层权重 (合计应为 1.0)
+  tier_weights:
+    tier1: 0.50   # 核心方向
+    tier2: 0.35   # 密切相关
+    tier3: 0.15   # 扩展兴趣
+
+  # 每层的相关性阈值 (低于此值该层得分为0)
+  tier_thresholds:
+    tier1: 0.30   # 核心可以用低阈值
+    tier2: 0.35
+    tier3: 0.40   # 宽泛需要高阈值
+
+  # 聚合方式: "max" | "top_k" | "mean"
+  aggregation: max
+
+# ============================================================
+# VIP关键词
 # ============================================================
 
 vip_keywords:
-  # Tier 1: 核心研究方向 (×1.50)
+  # Tier 1: 核心 (×1.50)
   tier1:
     multiplier: 1.50
     patterns:
       - \bRTCB\b
       - tRNA ligase
       - tRNA splicing
-      - RNA ligase
-      # 5'-OH 变体
       - 5'-OH RNA
-      - 5'-hydroxyl RNA
-      - 5'-hydroxyl termin
-      - 5'-OH termin
-      # 2',3'-cyclic phosphate 变体
       - 2',3'-cyclic phosphate
-      - 2',3'-cP
-      - 2'3'-cP
-      - cyclic phosphate termin
+      - \bRNase
+      - \bRLIG1\b
+      - \bHSPC117\b
+      - \bDDX1\b
+      - \bRTRAF\b
+      - \bFAM98B\b
+      - \bArchease\b
+      - \bAshwin\b
+      - \bTSEN([0-9]+)?\b
+      - \bspeckle
+      - \bANG\b
+      - \bribozyme\b
 
-  # Tier 2: 密切相关 (×1.30)
+  # Tier 2: 相关 (×1.30)
   tier2:
     multiplier: 1.30
     patterns:
-      # Enhancer 相关
       - \benhancer\b
       - \beRNA\b
-      - super-enhancer
-      - enhancer-promoter
-      - \bE-P\b
-      # Transposon 相关
       - transpos
-      - retrotranspos
+      - \bCas13\b
       - \bLINE-1\b
-      - mobile element
+      - \bLTR\b
+      - \bAlu\b
+      - \bSINE\b
+      - \bKBG\b
+      - \bc-Abl\b
+      - \bABL1\b
+      - \bPTP1B\b
+      - \bPTPN1\b
+      - \bMED12\b
 
-  # Tier 3: 扩展兴趣 (×1.15)
+  # Tier 3: 扩展 (×1.15)
   tier3:
     multiplier: 1.15
     patterns:
-      # piRNA 相关
       - \bpiRNA\b
-      - piwi
-      # RNA加工/降解
-      - \bRNase\b
       - RNA decay
-      - RNA degradation
-      - mRNA decay
-      - mRNA degradation
-      # 中心法则相关
-      - transcription-replication
-      - replication-transcription
+      - \bANKRD11\b
 
 # VIP叠加上限
 vip_max_multiplier: 1.80
-vip_stack_bonus: 0.10  # 多tier叠加每个+10%
+vip_stack_bonus: 0.10
 
 # ============================================================
-# 通用生物学关键词 (用于Layer1粗筛)
+# 通用生物学关键词 (Layer1粗筛)
 # 不包含这些词的文章直接过滤
 # ============================================================
 

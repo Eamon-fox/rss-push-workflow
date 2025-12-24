@@ -258,53 +258,29 @@
 # 一手源：PubMed 搜索
 # ============================================================
 
-# 核心主题：tRNA剪接、RNA连接酶
-- name: PubMed Topic_RTCB_Daily
-  type: pubmed
-  term: '(RTCB OR "tRNA ligase" OR "RNA ligase" OR "tRNA splicing") AND ("last 7 days"[dp])'
-  retmax: 100
+# ------------------------------------------------------------
+# 方案 C：生命科学大类 (用 MeSH 主题词，覆盖更全面)
+# ------------------------------------------------------------
 
-# 核心主题：UPR/ER应激
-- name: PubMed Topic_UPR_Daily
+# 生命科学大类 - 使用 MeSH 主题词限定，不依赖关键词
+- name: PubMed Life Sciences
   type: pubmed
-  term: '(IRE1 OR XBP1 OR "unfolded protein response" OR "ER stress") AND ("last 7 days"[dp])'
-  retmax: 100
+  term: '("Molecular Biology"[MeSH] OR "Cell Biology"[MeSH] OR "Genetics"[MeSH] OR "Biochemistry"[MeSH] OR "Genomics"[MeSH] OR "Neurosciences"[MeSH] OR "Immunology"[MeSH] OR "Oncology"[MeSH]) AND hasabstract AND "last 2 days"[dp]'
+  retmax: 2000
 
-# 核心主题：RNA剪接
-- name: PubMed Topic_RNA_Splicing
+# 专项主题合并 - 你关注的研究方向
+- name: PubMed Research Topics
   type: pubmed
-  term: '("RNA splicing" OR "pre-mRNA splicing" OR spliceosome) AND ("last 7 days"[dp])'
-  retmax: 100
+  term: '(RTCB OR "tRNA ligase" OR "RNA ligase" OR "tRNA splicing" OR IRE1 OR XBP1 OR "unfolded protein response" OR "ER stress" OR "RNA splicing" OR spliceosome OR "m6A" OR "RNA modification" OR "RNA methylation" OR lncRNA OR circRNA OR "non-coding RNA" OR enhancer OR eRNA OR "super-enhancer" OR transposon OR retrotransposon OR "mobile element" OR CRISPR OR "gene editing") AND hasabstract AND "last 2 days"[dp]'
+  retmax: 1000
 
-# 核心主题：RNA修饰
-- name: PubMed Topic_RNA_Modification
+# ------------------------------------------------------------
+# 顶刊速报 (40个顶级期刊，抓取最新 ahead-of-print)
+# ------------------------------------------------------------
+- name: PubMed Top Journals
   type: pubmed
-  term: '("RNA modification" OR "m6A" OR "RNA methylation" OR pseudouridine) AND ("last 7 days"[dp])'
-  retmax: 100
-
-# 核心主题：非编码RNA
-- name: PubMed Topic_ncRNA
-  type: pubmed
-  term: '("non-coding RNA" OR lncRNA OR circRNA OR "small RNA") AND ("last 7 days"[dp])'
-  retmax: 100
-
-# 核心主题：增强子/调控元件
-- name: PubMed Topic_Enhancer
-  type: pubmed
-  term: '(enhancer OR "enhancer RNA" OR eRNA OR "super-enhancer" OR "cis-regulatory") AND ("last 7 days"[dp])'
-  retmax: 100
-
-# 核心主题：转座子/移动元件
-- name: PubMed Topic_Transposon
-  type: pubmed
-  term: '(transposon OR transposable OR retrotransposon OR "mobile element" OR "LINE-1" OR "Alu element") AND ("last 7 days"[dp])'
-  retmax: 100
-
-# 顶刊速报 (扩展期刊列表)
-- name: PubMed Top_Journals_Speed
-  type: pubmed
-  term: '("Cell"[Journal] OR "Nature"[Journal] OR "Science"[Journal] OR "Molecular Cell"[Journal] OR "EMBO J"[Journal] OR "Genes Dev"[Journal] OR "Nucleic Acids Res"[Journal] OR "RNA"[Journal]) AND (aheadofprint[Filter] OR "online ahead of print") AND hasabstract'
-  retmax: 150
+  term: '("Cell"[Journal] OR "Nature"[Journal] OR "Science"[Journal] OR "Molecular Cell"[Journal] OR "EMBO J"[Journal] OR "Genes Dev"[Journal] OR "Nucleic Acids Res"[Journal] OR "RNA"[Journal] OR "Nat Genet"[Journal] OR "Nat Cell Biol"[Journal] OR "Nat Struct Mol Biol"[Journal] OR "Nat Methods"[Journal] OR "Nat Chem Biol"[Journal] OR "Nat Commun"[Journal] OR "Nat Biotechnol"[Journal] OR "Nat Med"[Journal] OR "Nat Neurosci"[Journal] OR "Nat Immunol"[Journal] OR "Nat Rev Mol Cell Biol"[Journal] OR "Nat Rev Genet"[Journal] OR "Cell Rep"[Journal] OR "Cell Stem Cell"[Journal] OR "Cancer Cell"[Journal] OR "Immunity"[Journal] OR "Dev Cell"[Journal] OR "Cell Metab"[Journal] OR "Neuron"[Journal] OR "Curr Biol"[Journal] OR "eLife"[Journal] OR "PNAS"[Journal] OR "Proc Natl Acad Sci U S A"[Journal] OR "PLoS Biol"[Journal] OR "PLoS Genet"[Journal] OR "EMBO Rep"[Journal] OR "Mol Cell Biol"[Journal] OR "J Cell Biol"[Journal] OR "J Biol Chem"[Journal] OR "Genome Res"[Journal] OR "Genome Biol"[Journal] OR "Mol Syst Biol"[Journal]) AND hasabstract AND "last 2 days"[dp]'
+  retmax: 500
 
 # ============================================================
 # 二手源：公众号 (需要第三方RSS服务)
@@ -436,3 +412,157 @@
 - name: Quanta Magazine Biology
   type: rss
   url: https://quantamagazine.org/biology/feed/
+
+# ============================================================
+# API 源：bioRxiv/medRxiv 官方 API
+# 解决 RSS 时效性问题，覆盖所有学科
+#
+# 30 天窗口确保不漏文章，seen.json 去重保护日常压力
+# ============================================================
+
+- name: bioRxiv API All
+  type: biorxiv_api
+  server: biorxiv
+  days_back: 2  # 日常增量，回填用专门脚本
+
+- name: medRxiv API All
+  type: biorxiv_api
+  server: medrxiv
+  days_back: 2
+
+# ============================================================
+# API 源：OpenAlex (开放学术图谱)
+# 覆盖 2.5 亿+ 论文，完全免费
+# max_results 限制单次获取量，seen.json 负责去重
+# ============================================================
+
+- name: OpenAlex Molecular Biology
+  type: openalex
+  days_back: 2
+  concepts:
+    - molecular_biology
+    - cell_biology
+    - biochemistry
+  max_results: 500
+  open_access_only: false
+
+- name: OpenAlex Genetics & Genomics
+  type: openalex
+  days_back: 2
+  concepts:
+    - genetics
+    - genomics
+    - gene_expression
+  max_results: 500
+
+- name: OpenAlex Neuroscience
+  type: openalex
+  days_back: 2
+  concepts:
+    - neuroscience
+    - neurobiology
+  max_results: 500
+
+# 新增：更多领域覆盖
+- name: OpenAlex Immunology
+  type: openalex
+  days_back: 2
+  concepts:
+    - immunology
+    - immune_system
+  max_results: 500
+
+- name: OpenAlex Cancer
+  type: openalex
+  days_back: 2
+  concepts:
+    - cancer
+    - oncology
+    - tumor
+  max_results: 500
+
+- name: OpenAlex Microbiology
+  type: openalex
+  days_back: 2
+  concepts:
+    - microbiology
+    - virology
+    - bacteriology
+  max_results: 500
+
+- name: OpenAlex Developmental Biology
+  type: openalex
+  days_back: 2
+  concepts:
+    - developmental_biology
+    - embryology
+    - stem_cell
+  max_results: 300
+
+- name: OpenAlex Pharmacology
+  type: openalex
+  days_back: 2
+  concepts:
+    - pharmacology
+    - drug_discovery
+    - toxicology
+  max_results: 300
+
+# ============================================================
+# API 源：Europe PMC (预印本 + PubMed 补充)
+# 预印本收录比 PubMed 更及时
+# ============================================================
+
+- name: Europe PMC Preprints
+  type: europepmc
+  days_back: 2
+  sources:
+    - PPR  # 所有预印本服务器
+  max_results: 800
+
+# 新增：通用生医药搜索（去掉 RNA 限制）
+- name: Europe PMC Cancer
+  type: europepmc
+  days_back: 2
+  query: 'cancer OR tumor OR oncology OR carcinoma'
+  sources:
+    - MED
+    - PPR
+  max_results: 500
+
+- name: Europe PMC Immunology
+  type: europepmc
+  days_back: 2
+  query: 'immunology OR "immune response" OR inflammation OR autoimmune'
+  sources:
+    - MED
+    - PPR
+  max_results: 500
+
+- name: Europe PMC Neuroscience
+  type: europepmc
+  days_back: 2
+  query: 'neuroscience OR neuron OR brain OR neurodegeneration'
+  sources:
+    - MED
+    - PPR
+  max_results: 500
+
+- name: Europe PMC Genetics
+  type: europepmc
+  days_back: 2
+  query: 'genetics OR genomics OR GWAS OR "gene therapy"'
+  sources:
+    - MED
+    - PPR
+  max_results: 500
+
+# 保留 RNA 研究（你的方向）
+- name: Europe PMC RNA Research
+  type: europepmc
+  days_back: 2
+  query: 'RNA OR "non-coding RNA" OR lncRNA OR miRNA OR tRNA'
+  sources:
+    - MED
+    - PPR
+  max_results: 300

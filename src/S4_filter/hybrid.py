@@ -1,9 +1,10 @@
 """Hybrid filter (Layer1 regex + Layer2 tiered scoring).
 
-New scoring formula:
-  final_score = base_score × anchor_tier_mult × coverage_mult × vip_mult
+Tiered scoring formula:
+  weighted_base = w1×tier1_score + w2×tier2_score + w3×tier3_score
+  final_score = weighted_base × coverage_mult × vip_mult × neg_penalty
 
-All multipliers are relative, making the system adaptive to different score distributions.
+Weights default: tier1=0.50, tier2=0.35, tier3=0.15
 """
 
 from __future__ import annotations
@@ -16,7 +17,8 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Protocol, Tuple, cast
+from threading import Lock
+from typing import Any, Dict, List, Optional, Protocol, Tuple, cast, TYPE_CHECKING
 
 import numpy as np
 
@@ -35,19 +37,24 @@ from .config import (
     VIP_KEYWORDS,
 )
 
+if TYPE_CHECKING:
+    from ..user_config import SemanticAnchors, ScoringParams, VIPKeywords
+
 FILTER_DIR = Path("data/filtered")
 EMBEDDING_CACHE_PATH = Path("data/embedding_cache.db")
 
 # Global cache instance (initialized on first use)
 _embedding_cache: EmbeddingCache | None = None
+_embedding_cache_lock = Lock()
 
 
 def _get_embedding_cache(model_id: str) -> EmbeddingCache:
-    """Get or create embedding cache for given model."""
+    """Get or create embedding cache for given model (thread-safe)."""
     global _embedding_cache
-    if _embedding_cache is None or _embedding_cache.model_id != model_id:
-        _embedding_cache = EmbeddingCache(EMBEDDING_CACHE_PATH, model_id)
-    return _embedding_cache
+    with _embedding_cache_lock:
+        if _embedding_cache is None or _embedding_cache.model_id != model_id:
+            _embedding_cache = EmbeddingCache(EMBEDDING_CACHE_PATH, model_id)
+        return _embedding_cache
 
 
 class Embedder(Protocol):
@@ -377,10 +384,15 @@ def _calculate_negative_penalty(
 ) -> Tuple[float, float]:
     """Calculate negative penalty based on similarity to negative anchors.
 
+    Uses gradual penalty instead of hard threshold:
+    - Below threshold: no penalty (1.0)
+    - Above threshold: linear interpolation from 1.0 down to penalty
+    - At threshold + 0.25: reaches minimum penalty
+
     Args:
         negative_sims: List of cosine similarities to negative anchors
-        threshold: Similarity threshold to trigger penalty
-        penalty: Penalty multiplier (e.g., 0.6 means 40% reduction)
+        threshold: Similarity threshold to start penalty (e.g., 0.45)
+        penalty: Minimum penalty multiplier (e.g., 0.6 means max 40% reduction)
 
     Returns:
         (penalty_multiplier, max_negative_similarity)
@@ -389,22 +401,38 @@ def _calculate_negative_penalty(
         return 1.0, 0.0
 
     max_neg_sim = max(negative_sims)
-    if max_neg_sim >= threshold:
-        return penalty, max_neg_sim
-    return 1.0, max_neg_sim
+    if max_neg_sim < threshold:
+        return 1.0, max_neg_sim
+
+    # Gradual penalty: linear interpolation from 1.0 to penalty
+    # Over a range of 0.25 (e.g., 0.45 -> 0.70 reaches minimum penalty)
+    penalty_range = 0.25
+    progress = min((max_neg_sim - threshold) / penalty_range, 1.0)
+    gradual_penalty = 1.0 - progress * (1.0 - penalty)
+
+    return gradual_penalty, max_neg_sim
 
 
 def _calculate_tiered_anchor_score(
     similarities: List[float],
+    top_k: int = 3,
 ) -> Tuple[float, float, float]:
     """Calculate base score, tier multiplier, and coverage multiplier.
 
+    Coverage bonus now uses logarithmic decay for multiple hits within same tier:
+      tier_bonus = base_bonus × (1 + decay_factor × log(hit_count))
+
+    This rewards hitting multiple anchors within a tier, but with diminishing returns.
+
     Args:
         similarities: List of cosine similarities to each anchor (in order: tier1, tier2, tier3)
+        top_k: Number of top similarities to average for base score (default: 3)
 
     Returns:
         (base_score, tier_multiplier, coverage_multiplier)
     """
+    import math
+
     if not similarities:
         return 0.0, 1.0, 1.0
 
@@ -416,24 +444,38 @@ def _calculate_tiered_anchor_score(
     tier2_sims = similarities[n_tier1:n_tier1 + n_tier2]
     tier3_sims = similarities[n_tier1 + n_tier2:]
 
-    # Base score: max across all anchors
-    base_score = max(similarities)
+    # Base score: top-k average for more robust scoring
+    sorted_sims = sorted(similarities, reverse=True)
+    k = min(top_k, len(sorted_sims))
+    base_score = sum(sorted_sims[:k]) / k
 
-    # Find which tier the best match belongs to
-    best_idx = similarities.index(base_score)
+    # Find which tier the best match belongs to (still use max for tier determination)
+    best_sim = max(similarities)
+    best_idx = similarities.index(best_sim)
     best_tier = TIERED_ANCHORS.get_tier(best_idx)
     tier_multiplier = SCORING_CONFIG.anchor_tier_multiplier.get(best_tier, 1.0)
 
-    # Coverage multiplier: bonus for hitting multiple tiers
+    # Coverage multiplier: bonus for hitting anchors, with log decay for multiple hits
     threshold = SCORING_CONFIG.anchor_coverage_threshold
+    decay_factor = 0.3  # Controls how much extra bonus for multiple hits
     coverage_bonus = 0.0
 
-    if tier1_sims and max(tier1_sims) > threshold:
-        coverage_bonus += SCORING_CONFIG.anchor_coverage_bonus.get("tier1", 0.0)
-    if tier2_sims and max(tier2_sims) > threshold:
-        coverage_bonus += SCORING_CONFIG.anchor_coverage_bonus.get("tier2", 0.0)
-    if tier3_sims and max(tier3_sims) > threshold:
-        coverage_bonus += SCORING_CONFIG.anchor_coverage_bonus.get("tier3", 0.0)
+    def calc_tier_bonus(sims: List[float], tier_name: str) -> float:
+        """Calculate bonus for a tier with log decay for multiple hits."""
+        if not sims:
+            return 0.0
+        hit_count = sum(1 for s in sims if s > threshold)
+        if hit_count == 0:
+            return 0.0
+        base_bonus = SCORING_CONFIG.anchor_coverage_bonus.get(tier_name, 0.0)
+        # Log decay: base × (1 + decay × log(hits))
+        # log(1) = 0, log(2) ≈ 0.69, log(3) ≈ 1.10, log(5) ≈ 1.61
+        multi_hit_multiplier = 1.0 + decay_factor * math.log(hit_count) if hit_count > 1 else 1.0
+        return base_bonus * multi_hit_multiplier
+
+    coverage_bonus += calc_tier_bonus(tier1_sims, "tier1")
+    coverage_bonus += calc_tier_bonus(tier2_sims, "tier2")
+    coverage_bonus += calc_tier_bonus(tier3_sims, "tier3")
 
     coverage_multiplier = 1.0 + coverage_bonus
 
@@ -470,6 +512,419 @@ class HybridFilterStats:
     avg_final_score: float = 0.0
     min_final_score: float = 0.0
     max_final_score: float = 0.0
+
+
+# ============================================================
+# Modular Filter Functions (for personalization support)
+# ============================================================
+
+def filter_layer1(items: list[NewsItem]) -> tuple[list[NewsItem], list[NewsItem]]:
+    """
+    Layer 1: Coarse bio-keyword filter.
+
+    Returns:
+        (passed_items, dropped_items)
+    """
+    passed: list[NewsItem] = []
+    dropped: list[NewsItem] = []
+
+    for item in items:
+        text = _item_text(item)
+        if _VIP_RE.search(text) or _GENERAL_BIO_RE.search(text):
+            passed.append(item)
+        else:
+            dropped.append(item)
+
+    return passed, dropped
+
+
+def get_embedder() -> Embedder:
+    """Get the default embedder instance."""
+    return _default_embedder()
+
+
+def compute_embeddings_batch(
+    items: list[NewsItem],
+    embedder: Embedder | None = None,
+) -> tuple[list[NewsItem], Any]:
+    """
+    Compute embeddings for items (with caching).
+
+    Returns:
+        (valid_items, embeddings_array)
+    """
+    if embedder is None:
+        embedder = _default_embedder()
+
+    valid_items: list[NewsItem] = []
+    valid_texts: list[str] = []
+    valid_dois: list[str] = []
+
+    for item in items:
+        text = _item_text(item)
+        if text:
+            valid_items.append(item)
+            valid_texts.append(text)
+            valid_dois.append(item.doi or "")
+
+    if not valid_items:
+        return [], np.array([])
+
+    embeddings = embedder.encode(valid_texts, dois=valid_dois)
+    return valid_items, embeddings
+
+
+def score_with_anchors(
+    items: list[NewsItem],
+    embedder: Embedder | None = None,
+    positive_anchors: list[str] | None = None,
+    negative_anchors: list[str] | None = None,
+    vip_keywords_config: dict | None = None,
+) -> list[tuple[NewsItem, float]]:
+    """
+    Score items using semantic anchors and VIP keywords.
+
+    Args:
+        items: Items to score (should have passed Layer 1)
+        embedder: Embedder instance (uses default if None)
+        positive_anchors: Custom positive anchors (uses global if None)
+        negative_anchors: Custom negative anchors (uses global if None)
+        vip_keywords_config: Custom VIP keywords config (uses global if None)
+
+    Returns:
+        List of (item, score) tuples, sorted by score descending
+    """
+    if not items:
+        return []
+
+    if embedder is None:
+        embedder = _default_embedder()
+
+    # Use global anchors if not provided
+    if positive_anchors is None:
+        anchors = TIERED_ANCHORS.all_anchors()
+    else:
+        anchors = positive_anchors
+
+    if negative_anchors is None:
+        neg_anchors = TIERED_ANCHORS.negative
+    else:
+        neg_anchors = negative_anchors
+
+    if not anchors:
+        return [(item, 0.0) for item in items]
+
+    # Prepare valid items
+    valid_items: list[NewsItem] = []
+    valid_texts: list[str] = []
+    valid_dois: list[str] = []
+
+    for item in items:
+        text = _item_text(item)
+        if text:
+            valid_items.append(item)
+            valid_texts.append(text)
+            valid_dois.append(item.doi or "")
+
+    if not valid_items:
+        return []
+
+    # Compute anchor embeddings
+    anchor_emb = embedder.encode(anchors)
+
+    # Compute negative anchor embeddings
+    negative_emb = None
+    if neg_anchors:
+        negative_emb = embedder.encode(neg_anchors)
+
+    # Batch encode items
+    batch_size = int(os.environ.get("HYBRID_EMBED_BATCH", "16"))
+    all_sims: list[list[float]] = []
+    all_negative_sims: list[list[float]] = []
+
+    for batch_start in range(0, len(valid_items), batch_size):
+        batch_end = min(batch_start + batch_size, len(valid_items))
+        batch_texts = valid_texts[batch_start:batch_end]
+        batch_dois = valid_dois[batch_start:batch_end]
+
+        batch_emb = embedder.encode(batch_texts, dois=batch_dois)
+        batch_sims = _cos_sim_matrix(batch_emb, anchor_emb)
+        all_sims.extend(batch_sims)
+
+        if negative_emb is not None:
+            batch_neg_sims = _cos_sim_matrix(batch_emb, negative_emb)
+            all_negative_sims.extend(batch_neg_sims)
+
+    # Calculate scores
+    results: list[tuple[NewsItem, float]] = []
+    neg_sims_iter = iter(all_negative_sims) if all_negative_sims else iter([])
+
+    for item, text, sims in zip(valid_items, valid_texts, all_sims):
+        # Use tiered scoring if using global anchors, else simple max
+        if positive_anchors is None:
+            base_score, tier_mult, coverage_mult = _calculate_tiered_anchor_score(sims)
+        else:
+            base_score = max(sims) if sims else 0.0
+            tier_mult = 1.0
+            coverage_mult = 1.0
+
+        # VIP multiplier
+        if vip_keywords_config is None:
+            vip_matches = _find_vip_matches(text)
+            vip_mult, vip_keywords = _calculate_vip_multiplier(vip_matches)
+        else:
+            # TODO: Support custom VIP keywords config
+            vip_mult = 1.0
+            vip_keywords = []
+
+        # Negative penalty
+        neg_penalty = 1.0
+        if all_negative_sims:
+            neg_sims = next(neg_sims_iter, [])
+            neg_penalty, _ = _calculate_negative_penalty(
+                neg_sims,
+                SCORING_CONFIG.negative_threshold,
+                SCORING_CONFIG.negative_penalty,
+            )
+
+        final_score = base_score * tier_mult * coverage_mult * vip_mult * neg_penalty
+
+        # Store in item
+        item.semantic_score = round(final_score, 4)
+        item.is_vip = bool(vip_keywords)
+        item.vip_keywords = vip_keywords
+
+        results.append((item, final_score))
+
+    # Sort by score descending
+    results.sort(key=lambda x: x[1], reverse=True)
+    return results
+
+
+# ============================================================
+# Unified Scoring Function (for both system and user configs)
+# ============================================================
+
+def score_items(
+    items: list[NewsItem],
+    anchors: "SemanticAnchors",
+    scoring_params: "ScoringParams",
+    vip_keywords: "VIPKeywords",
+    embedder: Embedder | None = None,
+) -> list[tuple[NewsItem, float]]:
+    """
+    Unified scoring function with tiered weighted scoring.
+
+    This function can be used for both:
+    - System daily (with default config)
+    - User daily (with user-specific config)
+
+    Scoring formula:
+      weighted_base = w1×tier1_score + w2×tier2_score + w3×tier3_score
+      final_score = weighted_base × coverage_mult × vip_mult × neg_penalty
+
+    Args:
+        items: Items to score
+        anchors: SemanticAnchors config (tier1, tier2, tier3, negative)
+        scoring_params: ScoringParams config
+        vip_keywords: VIPKeywords config
+        embedder: Embedder instance (uses default if None)
+
+    Returns:
+        List of (item, score) tuples, sorted by score descending
+    """
+    if not items:
+        return []
+
+    if embedder is None:
+        embedder = _default_embedder()
+
+    # Extract tier anchors
+    tier1_anchors = anchors.tier1
+    tier2_anchors = anchors.tier2
+    tier3_anchors = anchors.tier3
+    neg_anchors = anchors.negative
+
+    all_positive = anchors.all_positive()
+    if not all_positive:
+        return [(item, 0.0) for item in items]
+
+    # Prepare valid items
+    valid_items: list[NewsItem] = []
+    valid_texts: list[str] = []
+    valid_dois: list[str] = []
+
+    for item in items:
+        text = _item_text(item)
+        if text:
+            valid_items.append(item)
+            valid_texts.append(text)
+            valid_dois.append(item.doi or "")
+
+    if not valid_items:
+        return []
+
+    # Compute anchor embeddings for each tier
+    tier_embeddings = {}
+    for tier_name, tier_texts in [("tier1", tier1_anchors), ("tier2", tier2_anchors), ("tier3", tier3_anchors)]:
+        if tier_texts:
+            tier_embeddings[tier_name] = embedder.encode(tier_texts)
+        else:
+            tier_embeddings[tier_name] = None
+
+    # Compute negative anchor embeddings
+    negative_emb = None
+    if neg_anchors:
+        negative_emb = embedder.encode(neg_anchors)
+
+    # Compile VIP patterns
+    vip_patterns = {}
+    for tier_name in ["tier1", "tier2", "tier3"]:
+        tier_config = getattr(vip_keywords, tier_name, {})
+        patterns = tier_config.get("patterns", [])
+        compiled = []
+        for p in patterns:
+            try:
+                compiled.append((_clean_keyword_for_display(p), re.compile(p, re.IGNORECASE)))
+            except re.error:
+                pass
+        vip_patterns[tier_name] = (tier_config.get("multiplier", 1.0), compiled)
+
+    # Get scoring params
+    tier_weights = scoring_params.tier_weights
+    tier_thresholds = scoring_params.tier_thresholds
+    aggregation = scoring_params.aggregation
+    coverage_threshold = scoring_params.coverage_threshold
+    coverage_bonus_config = scoring_params.coverage_bonus
+    neg_threshold = scoring_params.negative_threshold
+    neg_penalty_value = scoring_params.negative_penalty
+    vip_max_mult = scoring_params.vip_max_multiplier
+
+    # Batch encode items
+    batch_size = int(os.environ.get("HYBRID_EMBED_BATCH", "16"))
+    all_tier_sims: Dict[str, list[list[float]]] = {"tier1": [], "tier2": [], "tier3": []}
+    all_negative_sims: list[list[float]] = []
+
+    for batch_start in range(0, len(valid_items), batch_size):
+        batch_end = min(batch_start + batch_size, len(valid_items))
+        batch_texts = valid_texts[batch_start:batch_end]
+        batch_dois = valid_dois[batch_start:batch_end]
+
+        batch_emb = embedder.encode(batch_texts, dois=batch_dois)
+
+        # Compute similarities for each tier
+        for tier_name in ["tier1", "tier2", "tier3"]:
+            if tier_embeddings[tier_name] is not None:
+                sims = _cos_sim_matrix(batch_emb, tier_embeddings[tier_name])
+                all_tier_sims[tier_name].extend(sims)
+            else:
+                all_tier_sims[tier_name].extend([[] for _ in range(batch_end - batch_start)])
+
+        # Negative similarities
+        if negative_emb is not None:
+            batch_neg_sims = _cos_sim_matrix(batch_emb, negative_emb)
+            all_negative_sims.extend(batch_neg_sims)
+
+    # Calculate scores
+    results: list[tuple[NewsItem, float]] = []
+
+    import math
+    decay_factor = 0.3  # Controls log decay for multiple anchor hits
+
+    for i, (item, text) in enumerate(zip(valid_items, valid_texts)):
+        tier_scores = {}
+        tier_hit_counts = {}  # Track how many anchors hit per tier
+        coverage_bonus = 0.0
+
+        # Calculate score for each tier
+        for tier_name in ["tier1", "tier2", "tier3"]:
+            sims = all_tier_sims[tier_name][i]
+            threshold = tier_thresholds.get(tier_name, 0.35)
+
+            if not sims:
+                tier_scores[tier_name] = 0.0
+                tier_hit_counts[tier_name] = 0
+                continue
+
+            # Count how many anchors exceed coverage threshold (for log decay bonus)
+            hit_count = sum(1 for s in sims if s > coverage_threshold)
+            tier_hit_counts[tier_name] = hit_count
+
+            # Aggregation
+            if aggregation == "max":
+                raw_score = max(sims)
+            elif aggregation == "top_k":
+                sorted_sims = sorted(sims, reverse=True)
+                k = min(2, len(sorted_sims))
+                raw_score = sum(sorted_sims[:k]) / k
+            else:  # mean
+                raw_score = sum(sims) / len(sims)
+
+            # Threshold filter
+            if raw_score >= threshold:
+                tier_scores[tier_name] = raw_score
+            else:
+                tier_scores[tier_name] = 0.0
+
+        # Coverage bonus with log decay for multiple hits
+        for tier_name in ["tier1", "tier2", "tier3"]:
+            hit_count = tier_hit_counts.get(tier_name, 0)
+            if hit_count > 0:
+                base_bonus = coverage_bonus_config.get(tier_name, 0.0)
+                # Log decay: base × (1 + decay × log(hits))
+                multi_hit_mult = 1.0 + decay_factor * math.log(hit_count) if hit_count > 1 else 1.0
+                coverage_bonus += base_bonus * multi_hit_mult
+
+        # Weighted sum
+        weighted_base = sum(
+            tier_scores[tier] * tier_weights.get(tier, 0.0)
+            for tier in ["tier1", "tier2", "tier3"]
+        )
+
+        coverage_mult = 1.0 + coverage_bonus
+
+        # VIP multiplier
+        vip_mult = 1.0
+        matched_vip_keywords = []
+        tiers_hit = []
+
+        for tier_name in ["tier1", "tier2", "tier3"]:
+            multiplier, patterns = vip_patterns[tier_name]
+            for display_name, pattern in patterns:
+                if pattern.search(text):
+                    matched_vip_keywords.append(display_name)
+                    if tier_name not in tiers_hit:
+                        tiers_hit.append(tier_name)
+
+        if tiers_hit:
+            if "tier1" in tiers_hit:
+                base_vip_mult = vip_patterns["tier1"][0]
+            elif "tier2" in tiers_hit:
+                base_vip_mult = vip_patterns["tier2"][0]
+            else:
+                base_vip_mult = vip_patterns["tier3"][0]
+            extra_tiers = len(tiers_hit) - 1
+            vip_mult = min(base_vip_mult + extra_tiers * 0.05, vip_max_mult)
+
+        # Negative penalty
+        neg_penalty = 1.0
+        if all_negative_sims and i < len(all_negative_sims):
+            neg_sims = all_negative_sims[i]
+            neg_penalty, _ = _calculate_negative_penalty(neg_sims, neg_threshold, neg_penalty_value)
+
+        # Final score
+        final_score = weighted_base * coverage_mult * vip_mult * neg_penalty
+
+        # Store in item
+        item.semantic_score = round(final_score, 4)
+        item.is_vip = bool(matched_vip_keywords)
+        item.vip_keywords = matched_vip_keywords
+
+        results.append((item, final_score))
+
+    # Sort by score descending
+    results.sort(key=lambda x: x[1], reverse=True)
+    return results
 
 
 def filter_hybrid(
@@ -518,14 +973,16 @@ def filter_hybrid(
     layer2_dropped: list[NewsItem] = []
     final_scores: list[float] = []
 
-    # Prepare valid items
+    # Prepare valid items with DOIs for cache lookup
     valid_items: list[NewsItem] = []
     valid_texts: list[str] = []
+    valid_dois: list[str] = []  # DOI for cache lookup (even if seen.json is cleared)
     for item in layer1_pass:
         text = _item_text(item)
         if text:
             valid_items.append(item)
             valid_texts.append(text)
+            valid_dois.append(item.doi or "")
         else:
             layer2_dropped.append(item)
 
@@ -572,9 +1029,11 @@ def filter_hybrid(
     for batch_start in range(0, total_items, batch_size):
         batch_end = min(batch_start + batch_size, total_items)
         batch_texts = valid_texts[batch_start:batch_end]
+        batch_dois = valid_dois[batch_start:batch_end]
 
         print(f"      Encoding batch {batch_start // batch_size + 1}/{(total_items + batch_size - 1) // batch_size} ({batch_end}/{total_items})...")
-        batch_emb = embedder.encode(batch_texts)
+        # Pass DOIs for cache lookup - ensures no recomputation even if seen.json is cleared
+        batch_emb = embedder.encode(batch_texts, dois=batch_dois)
         batch_sims = _cos_sim_matrix(batch_emb, anchor_emb)
         all_sims.extend(batch_sims)
 
@@ -612,9 +1071,8 @@ def filter_hybrid(
             if neg_penalty < 1.0:
                 negative_penalty_count += 1
 
-        # Final score
+        # Final score (no cap - allows scores > 1.0 for better differentiation)
         final_score = base_score * tier_mult * coverage_mult * vip_mult * neg_penalty
-        final_score = min(1.0, final_score)  # Cap at 1.0
 
         # Store in item
         item.semantic_score = round(final_score, 4)
@@ -725,7 +1183,7 @@ def _find_vip_keywords(text: str) -> list[str]:
 def _aggregate_semantic_score(similarities: list[float]) -> float:
     """Legacy scoring function."""
     base, tier_mult, cov_mult = _calculate_tiered_anchor_score(similarities)
-    return min(1.0, base * tier_mult * cov_mult)
+    return base * tier_mult * cov_mult
 
 
 def _sort_by_semantic(items: list[NewsItem]) -> list[NewsItem]:

@@ -62,7 +62,12 @@ def to_console(items: list[NewsItem], stats: dict | None = None) -> None:
 
 def to_json(items: list[NewsItem], path: str) -> None:
     """Export items to JSON file."""
-    data = [item.model_dump() for item in items]
+    data = []
+    for item in items:
+        d = item.model_dump()
+        # Use semantic_score as the main score field
+        d["score"] = d.get("semantic_score")
+        data.append(d)
 
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:

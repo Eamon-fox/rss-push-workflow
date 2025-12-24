@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import shutil
@@ -10,18 +9,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
+from src.core import generate_article_id, load_json, save_json, today, now_iso
+
 logger = logging.getLogger(__name__)
 
 ARCHIVE_BASE = Path("output/archive")
 OUTPUT_DIR = Path("output")
-
-
-def _generate_article_id(item: dict) -> str:
-    """生成文章 ID (与 api.py 保持一致)"""
-    if item.get("doi"):
-        return f"doi_{item['doi'].replace('/', '_').replace('.', '_')}"
-    title = (item.get("title") or "").strip().lower()
-    return f"t_{hashlib.md5(title.encode()).hexdigest()[:12]}"
+DATA_DIR = Path("data")
+CANDIDATES_FILE = DATA_DIR / "candidates.json"
 
 
 def get_archive_path(date: datetime | str) -> Path:
@@ -68,7 +63,7 @@ def archive_daily(
         Archive metadata for this version
     """
     if date is None:
-        date = datetime.now().strftime("%Y-%m-%d")
+        date = today()
 
     archive_path = get_archive_path(date)
     archive_path.mkdir(parents=True, exist_ok=True)
@@ -98,7 +93,7 @@ def archive_daily(
 
     version_info = {
         "version": version,
-        "created_at": datetime.now().isoformat(),
+        "created_at": now_iso(),
         "stats": stats,
         "article_count": len(items),
         "files": {
@@ -139,7 +134,7 @@ def _update_article_index(items: list, date: str, version: int):
             else:
                 item_dict = item
 
-            article_id = _generate_article_id(item_dict)
+            article_id = generate_article_id(item_dict)
             index[article_id] = {
                 "date": date,
                 "version": version,
@@ -153,38 +148,27 @@ def _update_article_index(items: list, date: str, version: int):
 
 def _load_metadata(path: Path) -> dict[str, Any]:
     """Load or create metadata."""
-    if path.exists():
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {"versions": []}
+    return load_json(path, default={"versions": []})
 
 
 def _save_metadata(path: Path, data: dict[str, Any]):
     """Save metadata."""
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    save_json(data, path)
 
 
 def _update_index(date: str, article_count: int, version: int):
     """Update global archive index."""
     index_file = ARCHIVE_BASE / "index.json"
-
-    if index_file.exists():
-        with open(index_file, "r", encoding="utf-8") as f:
-            index = json.load(f)
-    else:
-        index = {"dates": {}}
+    index = load_json(index_file, default={"dates": {}})
 
     index["dates"][date] = {
         "versions": version,
         "article_count": article_count,
-        "updated_at": datetime.now().isoformat(),
+        "updated_at": now_iso(),
     }
-    index["last_updated"] = datetime.now().isoformat()
+    index["last_updated"] = now_iso()
 
-    ARCHIVE_BASE.mkdir(parents=True, exist_ok=True)
-    with open(index_file, "w", encoding="utf-8") as f:
-        json.dump(index, f, ensure_ascii=False, indent=2)
+    save_json(index, index_file)
 
 
 def load_archived_daily(
@@ -217,9 +201,7 @@ def load_archived_daily(
     if not json_file.exists():
         return [], metadata
 
-    with open(json_file, "r", encoding="utf-8") as f:
-        articles = json.load(f)
-
+    articles = load_json(json_file, default=[])
     return articles, metadata
 
 
@@ -247,12 +229,10 @@ def list_archive_dates(
         ]
     """
     index_file = ARCHIVE_BASE / "index.json"
+    index = load_json(index_file, default={"dates": {}})
 
-    if not index_file.exists():
+    if not index.get("dates"):
         return []
-
-    with open(index_file, "r", encoding="utf-8") as f:
-        index = json.load(f)
 
     entries = []
     for date_str in sorted(index.get("dates", {}).keys(), reverse=True):
@@ -305,18 +285,7 @@ def list_archive_dates(
 def get_archive_stats() -> dict[str, Any]:
     """Get archive statistics."""
     index_file = ARCHIVE_BASE / "index.json"
-
-    if not index_file.exists():
-        return {
-            "total_days": 0,
-            "total_articles": 0,
-            "date_range": None,
-            "by_month": {},
-        }
-
-    with open(index_file, "r", encoding="utf-8") as f:
-        index = json.load(f)
-
+    index = load_json(index_file, default={"dates": {}})
     dates_info = index.get("dates", {})
     if not dates_info:
         return {
@@ -347,3 +316,213 @@ def get_archive_stats() -> dict[str, Any]:
         },
         "by_month": by_month,
     }
+
+
+# ============================================================
+# Candidate Pool Storage (for personalization)
+# ============================================================
+
+def archive_candidate_pool(items: list) -> Path:
+    """
+    追加文章到全局候选池。
+
+    Args:
+        items: List of NewsItem objects that passed Layer 1 filter
+
+    Returns:
+        Path to candidates file
+    """
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+    # 1. 加载现有候选池
+    existing_candidates: list[dict] = load_json(CANDIDATES_FILE, default=[])
+    existing_ids: set[str] = {generate_article_id(c) for c in existing_candidates}
+
+    # 2. 追加新文章（去重）
+    new_count = 0
+    for item in items:
+        if hasattr(item, "model_dump"):
+            item_dict = item.model_dump()
+        elif hasattr(item, "to_dict"):
+            item_dict = item.to_dict()
+        elif hasattr(item, "__dict__"):
+            item_dict = vars(item)
+        else:
+            item_dict = item
+
+        candidate = {
+            "doi": item_dict.get("doi"),
+            "title": item_dict.get("title"),
+            "content": item_dict.get("content"),
+            "source_name": item_dict.get("source_name"),
+            "journal_name": item_dict.get("journal_name"),
+            "link": item_dict.get("link"),
+            "published_at": item_dict.get("published_at"),
+            "authors": item_dict.get("authors"),
+            "default_score": item_dict.get("semantic_score"),
+            "is_vip": item_dict.get("is_vip", False),
+            "vip_keywords": item_dict.get("vip_keywords", []),
+        }
+
+        article_id = generate_article_id(candidate)
+        if article_id not in existing_ids:
+            existing_candidates.append(candidate)
+            existing_ids.add(article_id)
+            new_count += 1
+
+    # 3. 保存
+    save_json(existing_candidates, CANDIDATES_FILE)
+
+    logger.info(f"Candidate pool: +{new_count}, total {len(existing_candidates)}")
+    return CANDIDATES_FILE
+
+
+def load_candidate_pool() -> list[dict]:
+    """加载全局候选池。"""
+    return load_json(CANDIDATES_FILE, default=[])
+
+
+def load_historical_candidates() -> list[dict]:
+    """
+    加载候选池（带 article_id）。
+
+    Returns:
+        候选文章列表
+    """
+    candidates = load_candidate_pool()
+
+    # 添加 article_id
+    for candidate in candidates:
+        candidate["id"] = generate_article_id(candidate)
+
+    logger.info(f"Loaded {len(candidates)} candidates")
+    return candidates
+
+
+# ============================================================
+# Personal Daily Storage (per-user personalized reports)
+# ============================================================
+
+def _get_personal_dir(date: str) -> Path:
+    """Get personal daily directory for a date."""
+    archive_path = get_archive_path(date)
+    return archive_path / "personal"
+
+
+def _sanitize_openid(openid: str) -> str:
+    """Sanitize openid for safe filename."""
+    return "".join(c for c in openid if c.isalnum() or c in "-_")
+
+
+def save_personal_daily(
+    openid: str,
+    articles: list[dict],
+    date: Optional[str] = None,
+    config_hash: Optional[str] = None,
+) -> Path:
+    """
+    Save personal daily report for a user.
+
+    Args:
+        openid: User's openid
+        articles: List of article dicts (already scored and sorted)
+        date: Date string YYYY-MM-DD, defaults to today
+        config_hash: Hash of user config (for cache invalidation)
+
+    Returns:
+        Path to saved file
+    """
+    if date is None:
+        date = today()
+
+    personal_dir = _get_personal_dir(date)
+    personal_dir.mkdir(parents=True, exist_ok=True)
+
+    safe_openid = _sanitize_openid(openid)
+    personal_file = personal_dir / f"{safe_openid}.json"
+
+    data = {
+        "openid": openid,
+        "date": date,
+        "generated_at": now_iso(),
+        "config_hash": config_hash,
+        "article_count": len(articles),
+        "articles": articles,
+    }
+
+    save_json(data, personal_file)
+
+    # 更新文章索引
+    _update_article_index(articles, date, version=1)
+
+    logger.info(f"Saved personal daily for {safe_openid}: {len(articles)} articles -> {personal_file}")
+    return personal_file
+
+
+def load_personal_daily(
+    openid: str,
+    date: Optional[str] = None,
+) -> tuple[list[dict], dict]:
+    """
+    Load personal daily report for a user.
+
+    Args:
+        openid: User's openid
+        date: Date string YYYY-MM-DD, defaults to today
+
+    Returns:
+        (articles, metadata) or ([], {}) if not found
+    """
+    if date is None:
+        date = today()
+
+    personal_dir = _get_personal_dir(date)
+    safe_openid = _sanitize_openid(openid)
+    personal_file = personal_dir / f"{safe_openid}.json"
+
+    data = load_json(personal_file, default=None)
+    if data is None:
+        return [], {}
+
+    articles = data.get("articles", [])
+    metadata = {
+        "openid": data.get("openid"),
+        "date": data.get("date"),
+        "generated_at": data.get("generated_at"),
+        "config_hash": data.get("config_hash"),
+        "article_count": data.get("article_count"),
+    }
+    return articles, metadata
+
+
+def has_personal_daily(openid: str, date: Optional[str] = None) -> bool:
+    """Check if user has a personal daily for the given date."""
+    if date is None:
+        date = today()
+
+    personal_dir = _get_personal_dir(date)
+    safe_openid = _sanitize_openid(openid)
+    personal_file = personal_dir / f"{safe_openid}.json"
+
+    return personal_file.exists()
+
+
+def delete_personal_daily(openid: str, date: Optional[str] = None) -> bool:
+    """
+    Delete personal daily report (for regeneration).
+
+    Returns:
+        True if deleted, False if not found
+    """
+    if date is None:
+        date = today()
+
+    personal_dir = _get_personal_dir(date)
+    safe_openid = _sanitize_openid(openid)
+    personal_file = personal_dir / f"{safe_openid}.json"
+
+    if personal_file.exists():
+        personal_file.unlink()
+        logger.info(f"Deleted personal daily for {safe_openid} on {date}")
+        return True
+    return False

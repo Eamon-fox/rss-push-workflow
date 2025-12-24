@@ -1,46 +1,6 @@
-# 用户研究兴趣配置
-# 用于个性化LLM摘要，突出与你研究相关的内容
+# LLM摘要生成配置
+# 注意：摘要是公共的，不要添加个性化内容
 
-# 研究背景描述（给LLM理解你的研究方向）
-research_context: |
-  我的研究方向是tRNA剪接和未折叠蛋白响应(UPR)通路，
-  特别关注RtcB/RTCB连接酶在tRNA剪接、XBP1 mRNA非常规剪接中的作用。
-  也关注tRNA相关的翻译调控、应激响应机制。
-
-# 核心研究主题（用于LLM评分时加权）
-core_topics:
-  - "tRNA ligase"
-  - "tRNA splicing"
-  - "RtcB"
-  - "RTCB"
-  - "UPR pathway"
-  - "unfolded protein response"
-  - "XBP1 splicing"
-  - "IRE1"
-  - "ER stress"
-
-# 高亮关键词（在摘要中必须明确提及的关键词）
-# 如果文章中出现这些词，LLM必须在摘要中说明其与你研究的关联
-highlight_keywords:
-  - "RtcB"
-  - "RTCB"
-  - "tRNA ligase"
-  - "tRNA-LC"
-  - "HSPC117"
-  - "IRE1"
-  - "XBP1"
-  - "TSEN"
-  - "CLP1"
-  - "pontocerebellar hypoplasia"
-
-# 关联提示模板（LLM生成摘要时的额外指令）
-relevance_instruction: |
-  如果文章内容涉及以下任何关联点，必须在摘要中明确指出：
-  - 使用RtcB/RTCB作为实验工具或研究对象
-  - 涉及tRNA剪接、连接机制
-  - 涉及UPR/ER应激/XBP1通路
-  - 涉及RNA连接酶、RNA修复
-  - 与tRNA相关的神经退行性疾病
-
-  关联点格式示例：
-  "【与你的研究相关】本研究使用RtcB作为RNA连接工具，这与你研究的tRNA剪接机制直接相关。"
+# 留空 - 不使用个性化提示
+research_context: ""
+relevance_instruction: ""

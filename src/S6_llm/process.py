@@ -41,9 +41,10 @@ class LLMCache:
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
-                    cls._instance = super().__new__(cls)
-                    cls._instance._db_lock = Lock()
-                    cls._instance._init_db()
+                    instance = super().__new__(cls)
+                    instance._db_lock = Lock()
+                    instance._init_db()
+                    cls._instance = instance  # 初始化完成后再赋值
         return cls._instance
 
     def _init_db(self):

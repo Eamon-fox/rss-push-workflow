@@ -6,26 +6,30 @@
 
 ## 项目状态
 
-**当前版本**: v0.3.0
-**最后更新**: 2025-12-18
+**当前版本**: v0.5.0
+**最后更新**: 2025-12-20
 
 ### 已完成功能
 
 | 模块 | 功能 | 状态 |
 |------|------|------|
 | Pipeline | 7 步流水线完整实现 | ✅ |
-| 数据源 | 75 个 RSS + PubMed 来源 | ✅ |
+| 数据源 | 75 个 RSS + PubMed + 3 个 API 来源 | ✅ |
+| API 源 | bioRxiv API + OpenAlex + Europe PMC (30天窗口) | ✅ |
 | 解析器 | 7 种差异化解析器 | ✅ |
 | 过滤 | 双层混合过滤 (关键词 + 语义) | ✅ |
 | LLM | 中文摘要生成 (多 provider) | ✅ |
 | API | RESTful 后端接口 | ✅ |
-| 缓存 | RSS/PubMed 5h 缓存 | ✅ |
-| 缓存 | Embedding + LLM 缓存 | ✅ |
+| 缓存 | RSS/API 5h 缓存 | ✅ |
+| 缓存 | Embedding + LLM 缓存 (含 DOI 跨源查找) | ✅ |
 | 进度 | Pipeline 实时进度追踪 | ✅ |
 | 归档 | 多版本归档系统 | ✅ |
 | 部署 | systemd 服务 | ✅ |
 | 认证 | 微信小程序静默登录 | ✅ |
-| 收藏 | 文章收藏功能 | ✅ |
+| 收藏 | 文章收藏功能 (自动补充文章信息) | ✅ |
+| 清理 | 自动清理中间数据 + Raw + 日志 | ✅ |
+| 个性化 | 用户配置 + 个性化排序 | ✅ |
+| 用户隔离 | 按用户隔离 seen 记录 | ✅ |
 
 ---
 
@@ -49,27 +53,65 @@
        │                │                  │
        ▼                ▼                  ▼
    [Archive]      [LLM Cache]      [Embedding Cache]
+                                          │
+                                          ▼
+                              ┌───────────────────┐
+                              │  Candidate Pool   │ ← Layer1 通过的文章
+                              │ (个性化重排序)    │
+                              └───────────────────┘
+                                          │
+                              ┌───────────┴───────────┐
+                              ▼                       ▼
+                       [User Config]           [Personalized API]
+                       用户语义锚点              /api/daily?personalized=true
+                       VIP 关键词
 ```
 
 ### 数据流漏斗
 
 ```
-~500 items (75 来源)
+~2000+ items (75 RSS + 3 API 来源，30天窗口)
     │
     ▼ [5h 内复用缓存]
 3_dedup: 指纹去重 + seen 过滤
     │
-    ▼ ~100 items (去重后)
+    ▼ ~300 items (去重后，新增量)
 5_filter Layer1: 生物学关键词
     │
-    ▼ ~60 items
-5_filter Layer2: 语义相似度 + VIP
+    ├─────────────────────────────────────┐
+    │                                     ▼
+    ▼ ~100 items                   [Candidate Pool]
+5_filter Layer2: 语义相似度            保存供个性化使用
     │
     ▼ ~30 items (threshold 0.50)
 6_llm: Top 20 生成摘要
     │
     ▼
 7_deliver: JSON + HTML + MD + Archive
+
+个性化请求:
+    │
+Historical Candidate Pool (1 年，去重)
+    │
+    ▼ 用户语义锚点 + VIP 关键词重排序
+PersonalizedRanker.rerank()
+    │
+    ▼ Top 20 (按用户兴趣排序)
+按需生成 LLM 摘要 (缓存优先)
+```
+
+### 评分机制
+
+```
+final_score = base_score × tier_mult × coverage_mult × vip_mult × neg_penalty
+
+- base_score: 与最佳语义锚点的余弦相似度 (0-1)
+- tier_mult: 命中的 anchor 层级加成 (tier1=1.20, tier2=1.10, tier3=1.00)
+- coverage_mult: 跨层级覆盖奖励 (tier1=+12%, tier2=+6%, tier3=+3%)
+- vip_mult: VIP 关键词加成 (tier1=1.50, tier2=1.30, tier3=1.15)
+- neg_penalty: 负向锚点惩罚 (临床/农业/综述等降 40%)
+
+注意: 最终分数可超过 100%，体现 VIP 加成效果
 ```
 
 ---
@@ -96,9 +138,15 @@
 |------|------|------|
 | `/api/auth/me` | GET | 获取当前用户信息 |
 | `/api/bookmarks` | GET | 获取收藏列表 |
-| `/api/bookmarks/{id}` | POST | 添加收藏 |
+| `/api/bookmarks/{id}` | POST | 添加收藏 (自动补充文章信息) |
 | `/api/bookmarks/{id}` | DELETE | 取消收藏 |
 | `/api/bookmarks/{id}/status` | GET | 检查收藏状态 |
+| `/api/config` | GET | 获取用户配置 |
+| `/api/config` | PUT | 完整更新配置 |
+| `/api/config/vip-keywords` | PATCH | 更新 VIP 关键词 |
+| `/api/config/semantic-anchors` | PATCH | 更新语义锚点 |
+| `/api/config/reset` | POST | 重置为默认配置 |
+| `/api/config/defaults` | GET | 获取默认配置值 |
 
 详细文档: [API.md](API.md)
 
@@ -108,10 +156,22 @@
 
 | 缓存类型 | 位置 | TTL | 说明 |
 |----------|------|-----|------|
-| RSS/PubMed | `data/raw/{date}/` | 5h | 避免频繁请求数据源 |
-| Embedding | `data/embedding_cache.db` | 永久 | 文本向量缓存 |
-| LLM | `data/llm_cache.db` | 永久 | 摘要结果缓存 |
-| Seen | `data/seen.json` | 7 天 | 去重指纹记录 |
+| RSS/API | `data/raw/{date}/` | 5h | 避免频繁请求数据源 |
+| Embedding | `data/embedding_cache.db` | 永久 | 文本向量缓存 (text_hash + DOI) |
+| LLM | `data/llm_cache.db` | 永久 | 摘要结果缓存 (DOI 为 key) |
+| Seen | `data/seen/{user}.json` | 7 天 | 去重指纹记录 (按用户隔离) |
+
+### DOI 跨源缓存
+
+同一篇论文可能从多个来源获取（如 bioRxiv RSS + Europe PMC API），通过 DOI 关联实现跨源缓存命中：
+
+```
+embedding_cache.db
+├── embedding_cache    # text_hash -> embedding (主表)
+└── doi_cache_map      # DOI -> text_hash (跨源关联)
+```
+
+即使清空 `seen.json` 重跑，向量计算也不会重复。
 
 详细文档: [docs/Backend.md](docs/Backend.md)
 
@@ -179,16 +239,46 @@ POST /api/auth/wx-login {code}
 | 收藏夹分类 | P2 | 支持多个收藏夹 |
 | 备注编辑 | P3 | 编辑收藏备注 |
 
-### Phase 4: 个性化推荐
+### Phase 4: 个性化推荐 - 已完成 ✅
 
-**目标**: 基于用户行为的推荐
+**目标**: 基于用户配置的个性化推荐
 
-| 任务 | 优先级 | 说明 |
-|------|--------|------|
-| 用户画像 | P2 | 基于收藏/反馈构建兴趣向量 |
-| 个性化排序 | P2 | 文章按用户兴趣重排序 |
-| 关键词订阅 | P2 | 用户自定义 VIP 关键词 |
-| 推送通知 | P3 | VIP 关键词命中时推送 |
+| 任务 | 优先级 | 状态 | 说明 |
+|------|--------|------|------|
+| 用户配置系统 | P1 | ✅ | VIP 关键词 + 语义锚点存储 |
+| 候选池架构 | P1 | ✅ | Layer1 通过文章保存供个性化 |
+| 个性化排序 | P1 | ✅ | 按用户锚点重排序 |
+| 关键词订阅 | P1 | ✅ | 用户自定义 VIP 关键词 (三层) |
+| 按需 LLM | P1 | ✅ | 个性化结果按需生成摘要 |
+| 推送通知 | P3 | ⏳ | VIP 关键词命中时推送 |
+
+**个性化评分机制**
+
+```
+personalized_score = base_score × vip_mult × neg_penalty
+
+- base_score: 与用户正向锚点的最大余弦相似度
+- vip_mult: 用户 VIP 关键词加成 (tier1=1.50, tier2=1.30, tier3=1.15)
+- neg_penalty: 用户负向锚点惩罚 (相似度 > 0.38 时降 40%)
+
+用户无自定义配置时，使用系统默认分数。
+```
+
+**数据存储**
+
+| 文件 | 说明 |
+|------|------|
+| `data/user_configs/{openid}.json` | 用户个性化配置 |
+| `output/archive/{date}/candidates.json` | 候选池 (Layer1 通过) |
+
+**安全限制**
+
+| 限制 | 值 | 说明 |
+|------|---|------|
+| 单条锚点长度 | 3000 字符 | 超出自动截断 |
+| 锚点数量上限 | 50 条 | 超出丢弃最旧的 |
+
+收藏无限制，但同步到锚点时受上述限制。
 
 ### Phase 5: 运维增强
 
@@ -250,6 +340,9 @@ python main.py --no-llm
 # 指定输出数量
 python main.py --top 30
 
+# 为特定用户运行 (隔离 seen 记录)
+python main.py --user user123
+
 # 启动 API 服务
 python api.py
 
@@ -276,14 +369,24 @@ rss-push-workflow/
 │   ├── S7_deliver/            # 步骤7: 输出
 │   ├── auth.py                # 微信登录 + JWT 认证
 │   ├── bookmarks.py           # 收藏功能 CRUD
-│   ├── archive.py             # 归档模块
+│   ├── archive.py             # 归档模块 + 候选池
 │   ├── cleanup.py             # 清理模块
+│   ├── user_config.py         # 用户配置 CRUD
+│   ├── personalize.py         # 个性化排序引擎
 │   └── infra/                 # 基础设施
 ├── config/                    # 配置文件
 ├── data/                      # 数据目录
 │   ├── users.json             # 用户数据
-│   └── bookmarks.json         # 收藏数据
+│   ├── bookmarks.json         # 收藏数据
+│   ├── seen/                  # 去重记录 (按用户隔离)
+│   │   ├── default.json       # 默认用户 (定时任务)
+│   │   └── {openid}.json      # 微信用户
+│   └── user_configs/          # 用户个性化配置
+│       └── {openid}.json
 ├── output/                    # 输出目录
+│   └── archive/{date}/
+│       ├── daily_*.json       # 日报归档
+│       └── candidates.json    # 候选池
 ├── logs/                      # 日志目录
 └── docs/                      # 文档
     ├── API.md                 # API 文档

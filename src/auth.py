@@ -1,14 +1,15 @@
 """微信登录 + JWT 认证模块."""
 
-import json
 import time
-from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 import httpx
 import jwt
 import yaml
+
+from src.core import load_json, save_json, now_iso
+from src.user_config import get_or_create_config
 
 # ─────────────────────────────────────────────────────────────
 # 配置
@@ -35,17 +36,12 @@ def _load_config() -> dict:
 
 def _load_users() -> dict:
     """加载用户数据"""
-    if USERS_FILE.exists():
-        with open(USERS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {}
+    return load_json(USERS_FILE, default={})
 
 
 def _save_users(users: dict):
     """保存用户数据"""
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    with open(USERS_FILE, "w", encoding="utf-8") as f:
-        json.dump(users, f, ensure_ascii=False, indent=2)
+    save_json(users, USERS_FILE)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -107,12 +103,14 @@ async def wx_login(code: str) -> dict:
 
     if is_new_user:
         users[openid] = {
-            "created_at": datetime.now().isoformat(),
-            "last_login": datetime.now().isoformat(),
+            "created_at": now_iso(),
+            "last_login": now_iso(),
             "login_count": 1,
         }
+        # 创建默认用户配置
+        get_or_create_config(openid)
     else:
-        users[openid]["last_login"] = datetime.now().isoformat()
+        users[openid]["last_login"] = now_iso()
         users[openid]["login_count"] = users[openid].get("login_count", 0) + 1
 
     _save_users(users)

@@ -10,6 +10,9 @@ import yaml
 
 from . import pubmed
 from . import rss
+from . import biorxiv_api
+from . import openalex
+from . import europepmc
 
 __all__ = ["fetch_all", "load_sources"]
 
@@ -85,12 +88,20 @@ def _resolve_max_workers(total_sources: int) -> int:
 
 
 def _fetch_single_source(source: dict, save_raw: bool) -> list:
-    """Fetch a single source (RSS or PubMed)."""
+    """Fetch a single source based on type."""
     source_type = source.get("type", "rss")
+
     if source_type == "rss":
         return rss.fetch(source, save_raw=save_raw)
     if source_type == "pubmed":
         return pubmed.fetch(source, save_raw=save_raw)
+    if source_type == "biorxiv_api":
+        return biorxiv_api.fetch(source, save_raw=save_raw)
+    if source_type == "openalex":
+        return openalex.fetch(source, save_raw=save_raw)
+    if source_type == "europepmc":
+        return europepmc.fetch(source, save_raw=save_raw)
+
     raise ValueError(f"Unknown source type: {source_type}")
 
 

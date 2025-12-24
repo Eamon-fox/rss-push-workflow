@@ -1,9 +1,9 @@
 """收藏功能 CRUD 模块."""
 
-import json
-from datetime import datetime
 from pathlib import Path
 from typing import Optional
+
+from src.core import load_json, save_json, now_iso
 
 # ─────────────────────────────────────────────────────────────
 # 配置
@@ -15,17 +15,12 @@ BOOKMARKS_FILE = DATA_DIR / "bookmarks.json"
 
 def _load_bookmarks() -> dict:
     """加载收藏数据"""
-    if BOOKMARKS_FILE.exists():
-        with open(BOOKMARKS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {}
+    return load_json(BOOKMARKS_FILE, default={})
 
 
 def _save_bookmarks(bookmarks: dict):
     """保存收藏数据"""
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    with open(BOOKMARKS_FILE, "w", encoding="utf-8") as f:
-        json.dump(bookmarks, f, ensure_ascii=False, indent=2)
+    save_json(bookmarks, BOOKMARKS_FILE)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -50,7 +45,7 @@ def get_user_bookmarks(openid: str) -> list[dict]:
     for article_id, data in user_bookmarks.items():
         result.append({
             "article_id": article_id,
-            "saved_at": data.get("saved_at"),
+            "saved_at": data.get("saved_at", ""),
             "note": data.get("note", ""),
             # 文章基本信息
             "title": data.get("title", ""),
@@ -91,7 +86,7 @@ def add_bookmark(
         bookmarks[openid] = {}
 
     bookmark_data = {
-        "saved_at": datetime.now().isoformat(),
+        "saved_at": now_iso(),
         "note": note,
         "title": title,
         "journal": journal,
@@ -201,7 +196,7 @@ def update_bookmark_note(openid: str, article_id: str, note: str) -> Optional[di
         return None
 
     bookmarks[openid][article_id]["note"] = note
-    bookmarks[openid][article_id]["updated_at"] = datetime.now().isoformat()
+    bookmarks[openid][article_id]["updated_at"] = now_iso()
     _save_bookmarks(bookmarks)
 
     return {

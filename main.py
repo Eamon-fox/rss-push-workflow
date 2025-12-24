@@ -221,6 +221,13 @@ Examples:
         help="Number of top articles to include in daily report (default: 20)"
     )
 
+    parser.add_argument(
+        "--user",
+        type=str,
+        default=None,
+        help="User ID for per-user seen records isolation (default: 'default')"
+    )
+
     return parser.parse_args()
 
 
@@ -237,8 +244,11 @@ def run(args=None):
 
     print_header()
 
-    # Load dedup history
-    seen_records = dedup.load()
+    # Migrate legacy seen.json to per-user format (if exists)
+    dedup.migrate_legacy_seen()
+
+    # Load dedup history for this user
+    seen_records = dedup.load(user_id=args.user)
 
     # ─────────────────────────────────────────────────────────
     # Step 1: Aggregate
@@ -316,7 +326,7 @@ def run(args=None):
 
     if not items:
         print("No new items.")
-        dedup.save(seen_records)
+        dedup.save(seen_records, user_id=args.user)
         clear_progress()
         return
 
@@ -338,26 +348,49 @@ def run(args=None):
     update_progress(5, "running", input_count=len(items))
     print_step(5, 7, "Hybrid Filter (keyword + semantic)")
     before_filter = len(items)
-    items, dropped_items, stats = filt.filter_hybrid(
-        items,
-        seen_records=seen_records,
-        record_layer2_dropped_to_seen=True,
-    )
-    after_filter = len(items)
 
-    print_detail("Layer 1 (bio keywords)", f"passed {stats.total - stats.layer1_dropped}, dropped {stats.layer1_dropped}")
-    print_detail("Layer 2 (tiered scoring)", f"kept {stats.layer2_kept}, dropped {stats.layer2_dropped}")
-    if stats.avg_final_score > 0:
-        print_detail("Final scores", f"avg={stats.avg_final_score:.3f}, min={stats.min_final_score:.3f}, max={stats.max_final_score:.3f}")
+    # Step 5a: Layer 1 - 关键词过滤
+    layer1_passed, layer1_dropped = filt.filter_layer1(items)
+    print_detail("Layer 1 (bio keywords)", f"passed {len(layer1_passed)}, dropped {len(layer1_dropped)}")
+
+    if not layer1_passed:
+        print("No items after Layer 1 filtering.")
+        seen_records = dedup.cleanup(seen_records)
+        dedup.save(seen_records, user_id=args.user)
+        clear_progress()
+        return
+
+    # Step 5b: 计算语义分数 (embedding 会被缓存)
+    scored_items = filt.score_with_anchors(layer1_passed)
+
+    # Step 5c: 保存候选池 (供个性化使用)
+    from src.archive import archive_candidate_pool
+    candidates_for_pool = [item for item, score in scored_items]
+    archive_candidate_pool(candidates_for_pool)
+    print_detail("Candidate pool saved", len(candidates_for_pool))
+
+    # Step 5d: 按阈值过滤 (用于默认日报)
+    from src.S4_filter.config import SCORING_CONFIG
+    threshold = SCORING_CONFIG.final_threshold
+    items = [item for item, score in scored_items if score >= threshold]
+    dropped_count = len(scored_items) - len(items)
+
+    after_filter = len(items)
+    print_detail("Layer 2 (tiered scoring)", f"kept {after_filter}, dropped {dropped_count} (threshold={threshold})")
+
+    if items:
+        scores = [item.semantic_score for item in items if item.semantic_score]
+        if scores:
+            print_detail("Final scores", f"avg={sum(scores)/len(scores):.3f}, min={min(scores):.3f}, max={max(scores):.3f}")
 
     print_step_end(before_filter, after_filter)
     update_progress(5, "completed", input_count=before_filter, output_count=after_filter)
 
     if not items:
         print("No items after filtering.")
-        dedup.mark_batch(seen_records, new_fps)
+        # 不标记任何指纹，因为没有文章进入日报
         seen_records = dedup.cleanup(seen_records)
-        dedup.save(seen_records)
+        dedup.save(seen_records, user_id=args.user)
         clear_progress()
         return
 
@@ -438,11 +471,14 @@ def run(args=None):
     deliver.to_html_file(results, html_path, stats)
     print_detail("HTML saved", html_path)
 
-    # Save dedup history
-    dedup.mark_batch(seen_records, new_fps)
+    # Save dedup history - 只记录进入日报的文章
+    from src.S3_dedup.fingerprint import get_fingerprint
+    final_fps = [get_fingerprint(item) for item in results]
+    final_fps = [fp for fp in final_fps if fp]  # 过滤空指纹
+    dedup.mark_batch(seen_records, final_fps)
     seen_records = dedup.cleanup(seen_records)
-    dedup.save(seen_records)
-    print_detail("Dedup history", "updated")
+    dedup.save(seen_records, user_id=args.user)
+    print_detail("Dedup history", f"recorded {len(final_fps)} items")
 
     # Archive daily report
     from src.archive import archive_daily
@@ -455,15 +491,17 @@ def run(args=None):
     print_detail("Archived", f"v{archive_info['version']} -> output/archive/")
     logger.info(f"Archived v{archive_info['version']} with {len(results)} articles")
 
-    # Clean up intermediate data and old raw cache
+    # Clean up intermediate data, old raw cache, and old logs
     try:
-        from src.cleanup import cleanup_intermediate_data, cleanup_old_raw_data
+        from src.cleanup import cleanup_intermediate_data, cleanup_old_raw_data, cleanup_old_logs
         today_str = datetime.now().strftime("%Y-%m-%d")
         cleanup_stats = cleanup_intermediate_data(date=today_str)
         raw_cleanup_stats = cleanup_old_raw_data()
+        log_cleanup_stats = cleanup_old_logs()
         total_cleaned = cleanup_stats['dirs_removed'] + raw_cleanup_stats['dirs_removed']
-        print_detail("Cleanup", f"{total_cleaned} dirs removed")
-        logger.info(f"Cleanup completed: {total_cleaned} dirs removed")
+        logs_removed = log_cleanup_stats['files_removed']
+        print_detail("Cleanup", f"{total_cleaned} dirs, {logs_removed} logs removed")
+        logger.info(f"Cleanup completed: {total_cleaned} dirs, {logs_removed} logs removed")
     except Exception as e:
         logger.warning(f"Cleanup failed (non-critical): {e}")
         print_detail("Cleanup", "skipped due to error")

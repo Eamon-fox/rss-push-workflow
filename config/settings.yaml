@@ -1,5 +1,10 @@
 # ScholarPipe Configuration
 
+# 微信小程序配置
+wechat:
+  appid: wx1a609eecc9dc6972
+  secret: f5b837d3b310ed986804bbbf7cabd4c0
+
 llm:
   provider: mimo  # ollama (local), zhipu (cloud), siliconflow (cloud), or mimo (cloud)
   # Ollama settings (local)
@@ -9,7 +14,7 @@ llm:
     concurrency: 1      # local GPU limited
   # Zhipu settings (cloud)
   zhipu:
-    model: glm-4.6       # or glm-4.5-air
+    model: glm-4.7      # or glm-4.5-air
     allow_thinking: false
     concurrency: 5       # cloud API can handle more
   # SiliconFlow settings (cloud)

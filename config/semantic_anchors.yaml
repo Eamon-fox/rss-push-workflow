@@ -1,102 +1,35 @@
-# 语义锚点配置 (分层)
+# 语义锚点配置
 # 用于计算文章与研究兴趣的语义相似度
 
-# Tier 1: 核心研究方向 (命中奖励 ×1.20)
+# Tier 1: 核心研究方向
 tier1:
-  - |
-    Splicing of mammalian precursor transfer RNA (tRNA) molecules involves two enzymatic steps.
-    First, intron removal by the tRNA splicing endonuclease generates separate 5' and 3' exons.
-    In animals, the second step predominantly entails direct exon ligation by an elusive RNA ligase.
-    Using activity-guided purification of tRNA ligase from HeLa cell extracts, we identified HSPC117,
-    a member of the UPF0027 (RtcB) family, as the essential subunit of a tRNA ligase complex.
-    RNA interference-mediated depletion of HSPC117 inhibited maturation of intron-containing pre-tRNA
-    both in vitro and in living cells. The high sequence conservation of HSPC117/RtcB proteins is
-    suggestive of RNA ligase roles of this protein family in various organisms.
-  - |
-    RNA cleavage by some endoribonucleases and self-cleaving ribozymes produces RNA fragments with
-    5'-hydroxyl (5'-OH) and 2',3'-cyclic phosphate termini. To identify 5'-OH RNA fragments produced
-    by these cleavage events, we exploited the unique ligation mechanism of Escherichia coli RtcB
-    RNA ligase to attach an oligonucleotide linker to RNAs with 5'-OH termini, followed by steps for
-    library construction and analysis by massively parallel DNA sequencing. We applied the method to
-    RNA from budding yeast and captured known 5'-OH fragments produced by tRNA Splicing Endonuclease
-    (SEN) during processing of intron-containing pre-tRNAs and by Ire1 cleavage of HAC1 mRNA following
-    induction of the unfolded protein response (UPR). We identified numerous novel 5'-OH fragments
-    derived from mRNAs. This method enables specific capture of 5'-OH termini and complements existing
-    methods for identifying RNAs with 2',3'-cyclic phosphate termini.
-  - |
-    Ribozymes are small catalytic RNA sequences capable of nucleotide-specific self-cleavage found
-    widespread in nature. Ribozyme cleavage generates distinct 2',3'-phosphate and 5'-hydroxyl termini
-    that resemble substrates for recently characterized RNA repair pathways in cells. We report that
-    ribozyme cleavage of two separate mRNAs activated their scarless trans-ligation and translation
-    into full-length protein in eukaryotic cells, a process that we named StitchR (for Stitch RNA).
-    Optimization of StitchR activity in mammalian cells resulted in a ~900-fold increase in protein
-    expression that approached levels observed for genes expressed from single vectors. We demonstrate
-    that StitchR can be harnessed for effective dual adeno-associated virus gene therapies to correct
-    muscular dystrophies by restoring large functional muscle proteins to endogenous levels in vivo.
-
-# Tier 2: 密切相关方向 (命中奖励 ×1.10)
+  - "RNA ligases of the RTCB-type play an essential role in tRNA splicing, the unfolded protein response and RNA repair. RTCB is the catalytic subunit of the pentameric human tRNA ligase complex. RNA ligation by the tRNA ligase complex requires GTP-dependent activation of RTCB. This active site guanylylation reaction relies on the activation factor Archease. The mechanistic interplay between both proteins has remained unknown. Here, we report a biochemical and structural analysis of the human RTCB-Archease complex in the pre- and post-activation state. Archease reaches into the active site of RTCB and promotes the formation of a covalent RTCB-GMP intermediate through coordination of GTP and metal ions. During the activation reaction, Archease prevents futile RNA substrate binding to RTCB. Moreover, monomer structures of Archease and RTCB reveal additional states within the RNA ligation mechanism. Taken together, we present structural snapshots along the reaction cycle of the human tRNA ligase."
+  - "Ribozymes are small catalytic RNA sequences capable of nucleotide-specific self-cleavage found widespread in nature. Ribozyme cleavage generates distinct 2',3'-phosphate and 5'-hydroxyl termini that resemble substrates for recently characterized RNA repair pathways in cells. We report that ribozyme cleavage of two separate mRNAs activated their scarless trans-ligation and translation into full-length protein in eukaryotic cells, a process that we named StitchR (for Stitch RNA). Optimization of StitchR activity in mammalian cells resulted in a ~900-fold increase in protein expression that approached levels observed for genes expressed from single vectors. We demonstrate that StitchR can be harnessed for effective dual adeno-associated virus gene therapies to correct muscular dystrophies by restoring large functional muscle proteins to endogenous levels in vivo."
+  - "Signaling in the ancestral branch of the unfolded protein response (UPR) is initiated by unconventional splicing of HAC1/XBP1 mRNA during endoplasmic reticulum (ER) stress. In mammals, IRE1alpha has been known to cleave the XBP1 intron. However, the enzyme responsible for ligation of two XBP1 exons remains unknown. Using an XBP1 splicing-based synthetic circuit, we identify RtcB as the primary UPR RNA ligase. In RtcB knockout cells, XBP1 mRNA splicing is defective during ER stress. Genetic rescue and in vitro splicing show that the RNA ligase activity of RtcB is directly required for the splicing of XBP1 mRNA. Taken together, these data demonstrate that RtcB is the long-sought RNA ligase that catalyzes unconventional RNA splicing during the mammalian UPR."
+  - "Splicing of mammalian precursor transfer RNA (tRNA) molecules involves two enzymatic steps. First, intron removal by the tRNA splicing endonuclease generates separate 5' and 3' exons. In animals, the second step predominantly entails direct exon ligation by an elusive RNA ligase. Using activity-guided purification of tRNA ligase from HeLa cell extracts, we identified HSPC117, a member of the UPF0027 (RtcB) family, as the essential subunit of a tRNA ligase complex. RNA interference-mediated depletion of HSPC117 inhibited maturation of intron-containing pre-tRNA both in vitro and in living cells. The high sequence conservation of HSPC117/RtcB proteins is suggestive of RNA ligase roles of this protein family in various organisms."
+  - "RNA cleavage by some endoribonucleases and self-cleaving ribozymes produces RNA fragments with 5′-hydroxyl (5′-OH) and 2′,3′-cyclic phosphate termini. To identify 5′-OH RNA fragments produced by these cleavage events, we exploited the unique ligation mechanism of Escherichia coli RtcB RNA ligase to attach an oligonucleotide linker to RNAs with 5′-OH termini, followed by steps for library construction and analysis by massively parallel DNA sequencing. We applied the method to RNA from budding yeast and captured known 5′-OH fragments produced by tRNA Splicing Endonuclease (SEN) during processing of intron-containing pre-tRNAs and by Ire1 cleavage of HAC1 mRNA following induction of the unfolded protein response (UPR). We identified numerous novel 5′-OH fragments derived from mRNAs: some 5′-OH mRNA fragments were derived from single, localized cleavages, while others were likely produced by multiple, distributed cleavages. Many 5′-OH fragments derived from mRNAs were produced upstream of codons for highly electrostatic peptides, suggesting that the fragments may be generated by co-translational mRNA decay. Several 5′-OH RNA fragments accumulated during the induction of the UPR, some of which share a common sequence motif that may direct cleavage of these mRNAs. This method enables specific capture of 5′-OH termini and complements existing methods for identifying RNAs with 2′,3′-cyclic phosphate termini."
+# Tier 2: 密切相关
 tier2:
-  - |
-    All genomes have mobile genetic segments called transposable elements (TEs). Here we describe a
-    system, which we term SOS splicing, that protects Caenorhabditis elegans and human genes against
-    DNA-transposon-mediated disruption by excising these TEs from host mRNAs. SOS splicing, which
-    seems to operate independently of the spliceosome, is a pattern-recognition system triggered by
-    the base-pairing of inverted terminal repeat elements, which are a defining feature of DNA
-    transposons. We identify three factors required for SOS splicing in both C. elegans and human
-    cells: AKAP17A, which binds TE-containing mRNAs; the RNA ligase RTCB; and CAAP1, which bridges
-    RTCB and AKAP17A to allow RTCB to ligate mRNA fragments generated by TE excision. We propose
-    that SOS splicing is a previously undescribed conserved and RNA-structure-directed mode of mRNA
-    splicing, and that an identified function of SOS splicing is to genetically buffer animals from
-    the deleterious effects of DNA-transposon-mediated gene perturbation.
-  - |
-    The unfolded protein response (UPR) is a cellular stress response activated by accumulation of
-    misfolded proteins in the endoplasmic reticulum (ER). IRE1 is a key ER stress sensor that possesses
-    both kinase and RNase activities. Upon ER stress, IRE1 oligomerizes and activates its RNase domain,
-    which splices XBP1 mRNA in the cytoplasm. The spliced XBP1 encodes a transcription factor that
-    upregulates genes involved in ER protein folding, quality control, and ER-associated degradation
-    (ERAD). The IRE1-XBP1 pathway is conserved from yeast to humans and plays critical roles in
-    development, metabolism, and disease.
-
-# Tier 3: 扩展兴趣方向 (命中奖励 ×1.00)
+  - "Genetic robustness, or the ability of an organism to maintain fitness in the presence of harmful mutations, can be achieved via protein feedback loops. Previous work has suggested that organisms may also respond to mutations by transcriptional adaptation, a process by which related gene(s) are upregulated independently of protein feedback loops. However, the prevalence of transcriptional adaptation and its underlying molecular mechanisms are unknown. Here, by analysing several models of transcriptional adaptation in zebrafish and mouse, we uncover a requirement for mutant mRNA degradation. Alleles that fail to transcribe the mutated gene do not exhibit transcriptional adaptation, and these alleles give rise to more severe phenotypes than alleles displaying mutant mRNA decay. Transcriptome analysis in alleles displaying mutant mRNA decay reveals the upregulation of a substantial proportion of the genes that exhibit sequence similarity with the mutated gene's mRNA, suggesting a sequence-dependent mechanism. These findings have implications for our understanding of disease-causing mutations, and will help in the design of mutant alleles with minimal transcriptional adaptation-derived compensation."
+  - "Inhibiting epigenetic modulators can transcriptionally reactivate transposable elements (TEs). These TE transcripts often generate unique peptides that can serve as immunogenic antigens for immunotherapy. Here, we ask whether TEs activated by epigenetic therapy could appreciably increase the antigen repertoire in glioblastoma, an aggressive brain cancer with low mutation and neoantigen burden. We treated patient-derived primary glioblastoma stem cell lines, an astrocyte cell line and primary fibroblast cell lines with epigenetic drugs, and identified treatment-induced, TE-derived transcripts that are preferentially expressed in cancer cells. We verified that these transcripts could produce human leukocyte antigen class I-presented antigens using liquid chromatography with tandem mass spectrometry pulldown experiments. Importantly, many TEs were also transcribed, even in proliferating nontumor cell lines, after epigenetic therapy, which suggests that targeted strategies like CRISPR-mediated activation could minimize potential side effects of activating unwanted genomic regions. The results highlight both the need for caution and the promise of future translational efforts in harnessing treatment-induced TE-derived antigens for targeted immunotherapy."
+  - "Transposable elements (TEs), once considered genomic 'junk', are now recognized as critical regulators of genome function and human disease. These mobile genetic elements-including retrotransposons (long interspersed nuclear elements [LINE-1], Alu, short interspersed nuclear element-variable numbers of tandem repeats-Alu [SVA], and human endogenous retrovirus [HERV]) and DNA transposons-are tightly regulated by multilayered mechanisms that operate from transcription through to genomic integration. Although typically silenced in somatic cells, TEs are transiently activated during key developmental stages-such as zygotic genome activation and cell fate determination-where they influence chromatin architecture, transcriptional networks, RNA processing, and innate immune responses. Dysregulation of TEs, however, can lead to genomic instability, chronic inflammation, and various pathologies, including cancer, neurodegeneration, and aging. Paradoxically, their reactivation also presents new opportunities for clinical applications, particularly as diagnostic biomarkers and therapeutic targets. Understanding the dual role of TEs-and balancing their contributions to normal development and disease-is essential for advancing novel therapies and precision medicine."
+  - "Discrete genomic units can recombine into composite transposons that transcribe and transpose as single units, but their regulation and function are not fully understood. We report that composite transposons harbor bivalent histone marks, with activating and repressive marks in distinct regions. Genome-wide CRISPR-Cas9 screening, using a reporter driven by the hominid-specific composite transposon SVA (SINE [short interspersed nuclear element]-VNTR [variable number of tandem repeats]-Alu) in human cells, identified diverse genes that modify bivalent histone marks to regulate SVA transcription. SVA transcripts are critical for SVA’s cis-regulatory function in selectively contacting and activating long-range gene expression. Remarkably, a subset of bivalent SVAs is activated during erythropoiesis to boost multiple erythroid gene expression, and knocking down these SVAs leads to deficient erythropoiesis. The RNA-dependent cis-regulatory function of SVA activates genes for myelopoiesis and can contribute to aging-associated myeloid-biased hematopoiesis. These results reveal that the cis-regulatory functions of composite transposons are bivalently regulated to control cell fate transitions in development and aging."
+  - "Long interspersed nuclear element-1 (LINE-1 or L1) is a retrotransposon group that constitutes 17% of the human genome and shows variable expression across cell types. However, the control of L1 expression and its function in gene regulation are incompletely understood. Here we show that L1 transcription activates long-range gene expression. Genome-wide CRISPR–Cas9 screening using a reporter driven by the L1 5′ UTR in human cells identifies functionally diverse genes affecting L1 expression. Unexpectedly, altering L1 expression by knockout of regulatory genes impacts distant gene expression. L1s can physically contact their distal target genes, with these interactions becoming stronger upon L1 activation and weaker when L1 is silenced. Remarkably, L1s contact and activate genes essential for zygotic genome activation (ZGA), and L1 knockdown impairs ZGA, leading to developmental arrest in mouse embryos. These results characterize the regulation and function of L1 in long-range gene activation and reveal its importance in mammalian ZGA."
+# Tier 3: 扩展兴趣
 tier3:
-  - |
-    Enhancers are cis-regulatory DNA elements that activate transcription of target genes over long
-    genomic distances. Enhancer RNAs (eRNAs) are a class of non-coding RNAs transcribed from active
-    enhancers. Super-enhancers are large clusters of enhancers that drive expression of genes that
-    define cell identity. Recent studies have revealed that eRNAs play functional roles in gene
-    activation by facilitating enhancer-promoter looping, recruiting transcriptional machinery, and
-    modulating chromatin accessibility. The study of enhancer biology has important implications for
-    understanding development, disease, and gene regulation.
+  - "RNA processing and degradation pathways"
 
-# ============================================================
-# 负向锚点 (命中会降权)
-# 匹配这些内容的文章会被惩罚，降低最终分数
-# ============================================================
+# 负向锚点 (匹配会降权)
 negative:
-  # 临床/流行病学研究
-  - |
-    Clinical trial results and patient outcomes in randomized controlled studies.
-    Epidemiological survey of disease prevalence and risk factors in human populations.
-    Hospital-based cohort study with patient follow-up and survival analysis.
-    Drug efficacy and safety evaluation in phase I/II/III clinical trials.
-
-  # 农业/生态应用
-  - |
-    Agricultural applications for improving crop yield and pest resistance.
-    Field trials of genetically modified plants for herbicide tolerance.
-    Ecological survey of wildlife populations and biodiversity assessment.
-    Environmental monitoring of pollution levels and ecosystem health.
-
-  # 纯计算/生信方法（无实验验证）
-  - |
-    Machine learning algorithm development and benchmark comparisons on standard datasets.
-    Database construction and web server implementation for biological data analysis.
-    Bioinformatics pipeline development without experimental validation.
-    In silico prediction and computational modeling without wet-lab experiments.
-
-  # 综述/评论/科普
-  - |
-    Review article summarizing recent advances and future perspectives in the field.
-    Commentary on recent publications and their implications for the scientific community.
-    Science journalism and popular science communication for general audiences.
-    Editorial opinion on research trends and funding priorities.
+  # 临床试验/队列研究
+  - "This Statistical Analysis Plan describes the planned analyses for a multicenter, randomized, double-blind, placebo-controlled study evaluating the efficacy and safety of drug treatment in adults with heart disease and heart failure. The primary objective is to assess the effect of treatment compared with placebo on the composite endpoint of all-cause mortality or new or worsening heart failure over a follow-up period. Secondary endpoints include time to death, time to first and recurrent hospitalizations, and changes in quality of life scores. Efficacy analyses will be conducted in the modified intention-to-treat population. Time-to-event outcomes will be analyzed using Cox proportional hazards models."
+  # 流行病学/公共卫生
+  - "We conducted a secondary data analysis of longitudinal cohorts from multiple study sites. Hospitalization was defined as the child being admitted from at least 12 am to 6 am. Information on risk factors, clinical episodes, and hospital management was collected. We used descriptive statistics to summarize frequencies and proportions, and robust Poisson regression to estimate risk ratios for hospitalization, adjusting for age and study site. Several risk factors were significantly associated with higher likelihood of hospitalization, including vomiting, severe dehydration, severe wasting and severe diarrhea. These findings highlight the need for integrated approaches to reduce hospitalization rates."
+  # AI/机器学习医学应用
+  - "Several artificial intelligence-enhanced electrocardiogram models have shown promise in detecting left ventricular systolic dysfunction, but their head-to-head agreement and performance have not been independently compared within the same cohort. We systematically reviewed AI-ECG models predicting dysfunction and assessed the risk of bias. Model performance was evaluated in all consecutive patients and a lower-complexity subgroup. The risk of bias is high and primarily attributed to the limited description of development and validation cohort characteristics, as well as the lack of independent external validation."
+  # 护理/医疗系统研究
+  - "This study aims to deepen our understanding of how outpatient clinic nurses experience the use of video consultations. A hermeneutic qualitative exploratory approach was utilised to investigate these experiences and perceptions. Data were collected through qualitative focus group interviews with a purposive sample of nurses from cardiology outpatient clinics. The study highlights the importance of organisational support and infrastructure in shaping nurses attitudes toward video consultations. Strategies for successful implementation include targeted training programmes and user-friendly technology."
+  # 精神病学/心理学临床研究
+  - "Major depressive disorder is a neuro-immune, oxidative, and nitrosative stress disorder, in which peripheral immune-redox pathways intersect with metabolic networks. Serum samples from MDD inpatients and healthy controls were analyzed utilizing liquid chromatography and mass spectrometry. A meticulously regulated multistage machine learning pipeline with leakage-prevention protocols was employed to analyze differences between MDD and controls and to predict phenome scores. The functional profile of the metabolites indicates a convergence of lipotoxicity, phospholipid remodeling, and disruptions in fatty acid metabolism."
+  # 遗传流行病学（非分子机制）
+  - "We examined genetic and environmental contributions to victimisation risk across development using nationwide family data from millions of individuals. Violent victimisation was identified through hospital admissions and mortality records. Quantitative genetic models estimated additive genetic, shared environmental, and unique environmental influences across developmental periods, with sex-limitation analyses examining sex-specific effects. Aetiological architecture varied substantially across development with heritability decreasing and unique environmental contributions increasing from childhood to adulthood."

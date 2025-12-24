@@ -17,7 +17,7 @@ import httpx
 from ..models import NewsItem
 
 RAW_DIR = Path("data/raw")
-CACHE_MAX_AGE_HOURS = 5  # 缓存有效期（小时）
+CACHE_MAX_AGE_HOURS = 12  # 缓存有效期（小时）- 每天最多跑 2 次
 
 
 @dataclass(frozen=True)
@@ -247,11 +247,37 @@ def _efetch(pmids: Iterable[str], *, source_name: str, term: str, eutils: _Eutil
     if not pmid_list:
         return []
 
-    params = {"db": "pubmed", "id": ",".join(pmid_list), "retmode": "xml"}
-    params |= _eutils_params(eutils)
+    # Split into batches to avoid HTTP 414 (URI too long)
+    BATCH_SIZE = 100
+    all_items: list[NewsItem] = []
+    sleep_s = 0.15 if eutils.api_key else 0.4  # Rate limit compliance
 
-    xml_text = _get_text("https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi", params)
-    root = ET.fromstring(xml_text)
+    for i in range(0, len(pmid_list), BATCH_SIZE):
+        batch = pmid_list[i:i + BATCH_SIZE]
+
+        params = {"db": "pubmed", "id": ",".join(batch), "retmode": "xml"}
+        params |= _eutils_params(eutils)
+
+        try:
+            xml_text = _get_text("https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi", params)
+            root = ET.fromstring(xml_text)
+        except Exception as e:
+            print(f"  [{source_name}] EFetch batch {i//BATCH_SIZE + 1} error: {e}")
+            time.sleep(sleep_s)
+            continue
+
+        batch_items = _parse_efetch_results(root, source_name=source_name, term=term)
+        all_items.extend(batch_items)
+
+        # Rate limiting between batches
+        if i + BATCH_SIZE < len(pmid_list):
+            time.sleep(sleep_s)
+
+    return all_items
+
+
+def _parse_efetch_results(root: ET.Element, *, source_name: str, term: str) -> list[NewsItem]:
+    """Parse EFetch XML results into NewsItem list."""
 
     items: list[NewsItem] = []
     search_url = _pubmed_search_url(term)
@@ -516,18 +542,23 @@ def _get_json(url: str, params: dict[str, str]) -> dict:
 
 def _get_text(url: str, params: dict[str, str]) -> str:
     last_exc: Exception | None = None
-    for attempt in range(3):
+    for attempt in range(5):  # Increased retries
         try:
-            resp = httpx.get(url, params=params, timeout=30)
+            resp = httpx.get(url, params=params, timeout=60)  # Longer timeout
             if resp.status_code == 200:
                 return resp.text
-            if resp.status_code in (429, 500, 502, 503, 504):
-                time.sleep(0.8 * (attempt + 1))
+            if resp.status_code == 429:
+                # Rate limited - exponential backoff
+                wait = 2 ** attempt  # 1, 2, 4, 8, 16 seconds
+                time.sleep(wait)
+                continue
+            if resp.status_code in (500, 502, 503, 504):
+                time.sleep(1.5 * (attempt + 1))
                 continue
             raise RuntimeError(f"HTTP {resp.status_code}")
         except Exception as e:
             last_exc = e
-            time.sleep(0.8 * (attempt + 1))
+            time.sleep(1.5 * (attempt + 1))
             continue
     raise RuntimeError(f"Request failed: {last_exc}")
 
