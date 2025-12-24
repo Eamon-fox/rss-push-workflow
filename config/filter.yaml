@@ -36,7 +36,7 @@ tiered_scoring:
   tier_thresholds:
     tier1: 0.30   # 核心可以用低阈值
     tier2: 0.35
-    tier3: 0.40   # 宽泛需要高阈值
+    tier3: 0.35   # 扩展兴趣，阈值放宽
 
   # 聚合方式: "max" | "top_k" | "mean"
   aggregation: max
@@ -94,6 +94,25 @@ vip_keywords:
       - \bpiRNA\b
       - RNA decay
       - \bANKRD11\b
+      # 超转录
+      - hypertranscription
+      # 染色质重塑
+      - chromatin remodel
+      - \bSWI/SNF\b
+      - \bBAF\b
+      - \bPBAF\b
+      - \bCHD[0-9]+\b
+      - \bINO80\b
+      - \bISWI\b
+      - \bNuRD\b
+      # 染色质结构/3D基因组
+      - \bTAD\b
+      - \bCTCF\b
+      - \bcohesin\b
+      - chromatin loop
+      - \bHi-C\b
+      - topologically associating domain
+      - enhancer-promoter
 
 # VIP叠加上限
 vip_max_multiplier: 1.80
